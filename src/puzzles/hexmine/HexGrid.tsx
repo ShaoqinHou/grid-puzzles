@@ -53,6 +53,7 @@ export function HexGrid({ definition }: HexGridProps) {
   const [hoverCell, setHoverCell] = useState<string | null>(null);
   const [showLegend, setShowLegend] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [hoveredScope, setHoveredScope] = useState<ReadonlySet<string> | null>(null);
 
   const grid = state.grid as HexMineGrid;
   const solution = state.solution as HexMineGrid;
@@ -110,12 +111,13 @@ export function HexGrid({ definition }: HexGridProps) {
   }, [width, height, hexSize]);
 
   // Build clue lookup map + question mark set for rendering
-  const { clueMap, questionMarkSet, edgeHeaders } = useMemo(() => {
+  const { clueMap, questionMarkSet, edgeHeaders, clueScopeMap } = useMemo(() => {
     const clueData = state.clues as HexMineClueData | null;
     if (!clueData) return {
       clueMap: new Map<string, ClueDisplayInfo>(),
       questionMarkSet: new Set<string>(),
       edgeHeaders: [] as Array<{ x: number; y: number; text: string }>,
+      clueScopeMap: new Map<string, ReadonlySet<string>>(),
     };
     const map = new Map<string, ClueDisplayInfo>();
     const headers: Array<{ x: number; y: number; text: string }> = [];
@@ -148,10 +150,19 @@ export function HexGrid({ definition }: HexGridProps) {
         });
       }
     }
+    // Build scope lookup: displayKey → set of cellKeys (for hover highlighting)
+    const scopeMap = new Map<string, ReadonlySet<string>>();
+    for (const clue of clueData.clues) {
+      if (clue.type === 'range' || clue.type === 'line' || (clue.type === 'adjacent' && clue.special !== 'none')) {
+        scopeMap.set(clue.displayKey, new Set(clue.cellKeys));
+      }
+    }
+
     return {
       clueMap: map,
       questionMarkSet: new Set(clueData.questionMarks),
       edgeHeaders: headers,
+      clueScopeMap: scopeMap,
     };
   }, [state.clues, hexSize]);
 
@@ -496,10 +507,17 @@ export function HexGrid({ definition }: HexGridProps) {
             }
             clueInfo={clueMap.get(c.key)}
             isQuestionMark={questionMarkSet.has(c.key)}
+            isScopeHighlight={hoveredScope !== null && hoveredScope.has(c.key)}
             onMouseDown={(e) => handleCellClick(c.row, c.col, e)}
             onContextMenu={(e) => handleContextMenu(c.row, c.col, e)}
-            onMouseEnter={() => setHoverCell(c.key)}
-            onMouseLeave={() => setHoverCell(null)}
+            onMouseEnter={() => {
+              setHoverCell(c.key);
+              setHoveredScope(clueScopeMap.get(c.key) ?? null);
+            }}
+            onMouseLeave={() => {
+              setHoverCell(null);
+              setHoveredScope(null);
+            }}
             onTap={() => handleCellClick(c.row, c.col, { button: 0 } as React.MouseEvent)}
             onLongPress={() => handleContextMenu(c.row, c.col, { preventDefault: () => {} } as React.MouseEvent)}
           />
@@ -512,9 +530,10 @@ export function HexGrid({ definition }: HexGridProps) {
             y={h.y}
             textAnchor="middle"
             dominantBaseline="central"
-            fontSize={hexSize * 0.55}
+            fontSize={hexSize * 0.8}
             fontWeight="bold"
-            fill="var(--color-text-secondary)"
+            fill="var(--color-text-primary)"
+            opacity={0.85}
             style={{ pointerEvents: 'none' }}
           >
             {h.text}

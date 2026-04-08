@@ -38,8 +38,8 @@ export const hexmineClueConfig = {
   cascadeReveal: true,
   /** Click revealed number to auto-reveal when flag count matches */
   chordReveal: true,
-  /** Flagging a safe cell = instant loss */
-  loseOnWrongFlag: true,
+  /** Flagging a safe cell = instant loss (off by default — opt-in for Hexcells-style) */
+  loseOnWrongFlag: false,
   // ── Quantities ──
   adjacentRatio: 0.3,
   lineCountHard: 2,

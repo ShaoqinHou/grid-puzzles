@@ -1,5 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { hexmineClueConfig } from './generate';
+import { loadFromStorage, saveToStorage } from '@/services/storage';
+
+const CONFIG_KEY = 'grid-puzzles:hexmine-config';
+
+// Load persisted config on module init
+const saved = loadFromStorage<Partial<typeof hexmineClueConfig>>(CONFIG_KEY);
+if (saved) {
+  Object.assign(hexmineClueConfig, saved);
+}
 
 function Toggle({ label, checked, onChange }: {
   label: string; checked: boolean; onChange: (v: boolean) => void;
@@ -56,6 +65,7 @@ export function HexMineConfigPanel({ onClose }: { onClose: () => void }) {
   ) => {
     setCfg((prev) => ({ ...prev, [key]: value }));
     hexmineClueConfig[key] = value;
+    saveToStorage(CONFIG_KEY, { ...hexmineClueConfig });
   };
 
   return (

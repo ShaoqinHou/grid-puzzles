@@ -55,6 +55,7 @@ export interface HexCellProps {
   readonly isHinted: boolean;
   readonly clueInfo?: ClueDisplayInfo;
   readonly isQuestionMark?: boolean;
+  readonly isScopeHighlight?: boolean;
   readonly onMouseDown: (e: React.MouseEvent) => void;
   readonly onContextMenu: (e: React.MouseEvent) => void;
   readonly onMouseEnter: () => void;
@@ -73,6 +74,7 @@ export function HexCellRenderer({
   isHinted,
   clueInfo,
   isQuestionMark,
+  isScopeHighlight,
   onMouseDown,
   onContextMenu,
   onMouseEnter,
@@ -166,27 +168,40 @@ export function HexCellRenderer({
   } else if (cell === 'disabled') {
     fill = 'var(--color-hex-disabled)';
     stroke = 'var(--color-hex-disabled-stroke)';
-    // Render line clue text if clue info exists
+    // Render line clue: number + direction arrow
     if (clueInfo) {
       const text = formatClueText(clueInfo.mineCount, clueInfo.special, clueInfo.type);
-      const rotation = clueInfo.direction !== undefined
-        ? LINE_ROTATIONS[clueInfo.direction] ?? 0
+      // Direction arrow: line from center outward
+      const dirRad = clueInfo.direction !== undefined
+        ? (clueInfo.direction * 60 - 30) * (Math.PI / 180) // match hex vertex angles
         : 0;
+      const arrowLen = size * 0.7;
+      const ax = cx + Math.cos(dirRad) * arrowLen;
+      const ay = cy + Math.sin(dirRad) * arrowLen;
       content = (
-        <text
-          x={cx}
-          y={cy}
-          textAnchor="middle"
-          dominantBaseline="central"
-          fontSize={fontSize * 0.75}
-          fontWeight="bold"
-          fontFamily="system-ui, -apple-system, sans-serif"
-          fill="var(--color-hex-clue-line)"
-          transform={`rotate(${rotation}, ${cx}, ${cy})`}
-          style={{ pointerEvents: 'none' }}
-        >
-          {text}
-        </text>
+        <>
+          <line
+            x1={cx} y1={cy} x2={ax} y2={ay}
+            stroke="var(--color-hex-clue-line)"
+            strokeWidth={1.5}
+            strokeDasharray="3,2"
+            opacity={0.6}
+            style={{ pointerEvents: 'none' }}
+          />
+          <text
+            x={cx}
+            y={cy}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={fontSize * 0.7}
+            fontWeight="bold"
+            fontFamily="system-ui, -apple-system, sans-serif"
+            fill="var(--color-hex-clue-line)"
+            style={{ pointerEvents: 'none' }}
+          >
+            {text}
+          </text>
+        </>
       );
     }
   } else if (cell === 0) {
@@ -262,6 +277,11 @@ export function HexCellRenderer({
         </text>
       );
     }
+  }
+
+  if (isScopeHighlight) {
+    stroke = 'var(--color-accent)';
+    strokeWidth = 2;
   }
 
   if (isHinted) {

@@ -1148,16 +1148,17 @@ def test_hexmine(page: Page):
         check("Hexmine — undo mine hit: cell hidden again",
               state['grid'][mine[0]][mine[1]] == 'hidden')
 
-    # 9. Lose on wrong flag
+    # 9. Wrong flag on safe cell (loseOnWrongFlag is OFF by default — just places flag)
     start_easy_hexmine(page)
     safe = find_safe_hex_cell(page)
     if safe:
         click_hex_cell(page, safe[0], safe[1], button=2)
         state = get_state(page)
-        check("Hexmine — wrong flag: cell exploded",
-              state['grid'][safe[0]][safe[1]] == 'exploded')
-        check("Hexmine — wrong flag: game paused",
-              state.get('paused') == True)
+        # With loseOnWrongFlag OFF, flagging a safe cell just places a flag
+        check("Hexmine — wrong flag (toggle off): cell is flagged",
+              state['grid'][safe[0]][safe[1]] == 'flagged')
+        check("Hexmine — wrong flag (toggle off): game not paused",
+              state.get('paused') == False)
 
     # 10. Win condition — reveal all safe cells
     start_easy_hexmine(page)
