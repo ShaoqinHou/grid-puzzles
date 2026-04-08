@@ -158,20 +158,6 @@ export function HexCellRenderer({
     }
   } else if (cell === 0) {
     fill = 'var(--color-hex-revealed-0)';
-    // Even 0-cells can be question marks
-    if (isQuestionMark) {
-      content = (
-        <text
-          x={cx} y={cy}
-          textAnchor="middle" dominantBaseline="central"
-          fontSize={fontSize} fontWeight="bold"
-          fill="var(--color-text-tertiary)"
-          style={{ pointerEvents: 'none' }}
-        >
-          ?
-        </text>
-      );
-    }
   } else {
     // Number 1-6
     fill = 'var(--color-hex-revealed)';

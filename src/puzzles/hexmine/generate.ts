@@ -398,9 +398,7 @@ function generateEdgeHeaders(
       if (solution[r][c] === 'mine') mines++;
     }
     if (mines > 0 && cellKeys.length > 0) {
-      // Position: left of the row
-      const { q, r: ar } = offsetToAxial(r, 0);
-      const pixel = axialToPixel(q, ar, 1); // unit size, scaled later
+      // Store row index — pixel position computed at render time
       candidates.push({
         id: `edge-row-${r}`,
         type: 'edge-header',
@@ -408,7 +406,7 @@ function generateEdgeHeaders(
         mineCount: mines,
         special: 'none',
         displayKey: `edge-row-${r}`,
-        edgePosition: { x: -2.5, y: pixel.y },
+        edgePosition: { x: -1, y: r }, // x=-1 means "left edge", y=row index
       });
     }
   }
@@ -424,8 +422,7 @@ function generateEdgeHeaders(
       if (solution[r][c] === 'mine') mines++;
     }
     if (mines > 0 && cellKeys.length > 0) {
-      const { q, r: ar } = offsetToAxial(0, c);
-      const pixel = axialToPixel(q, ar, 1);
+      // Store col index — pixel position computed at render time
       candidates.push({
         id: `edge-col-${c}`,
         type: 'edge-header',
@@ -433,7 +430,7 @@ function generateEdgeHeaders(
         mineCount: mines,
         special: 'none',
         displayKey: `edge-col-${c}`,
-        edgePosition: { x: pixel.x, y: -2.0 },
+        edgePosition: { x: c, y: -1 }, // y=-1 means "top edge", x=col index
       });
     }
   }

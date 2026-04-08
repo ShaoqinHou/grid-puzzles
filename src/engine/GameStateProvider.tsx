@@ -172,8 +172,14 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
     case 'RESET': {
       if (state.width === 0) return state;
 
-      const emptyGrid: unknown[][] = Array.from({ length: state.height }, () =>
-        Array.from({ length: state.width }, () => state.emptyCell),
+      // Preserve shape-inactive cells (e.g., 'disabled' line-clue origins)
+      const emptyGrid: unknown[][] = Array.from({ length: state.height }, (_, r) =>
+        Array.from({ length: state.width }, (_, c) => {
+          if (state.shape !== null && !state.shape[r][c]) {
+            return state.grid[r][c]; // keep disabled/inactive cells as-is
+          }
+          return state.emptyCell;
+        }),
       );
 
       return {

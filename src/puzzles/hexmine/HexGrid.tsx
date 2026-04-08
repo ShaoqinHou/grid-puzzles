@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PuzzleDefinition } from '@/engine/puzzleTypes';
 import type { CellCoord } from '@/types';
 import { useGameState } from '@/engine/GameStateProvider';
@@ -121,11 +121,24 @@ export function HexGrid({ definition }: HexGridProps) {
     const headers: Array<{ x: number; y: number; text: string }> = [];
     for (const clue of clueData.clues) {
       if (clue.type === 'edge-header' && clue.edgePosition) {
-        headers.push({
-          x: clue.edgePosition.x * hexSize,
-          y: clue.edgePosition.y * hexSize,
-          text: `${clue.mineCount}`,
-        });
+        // Compute pixel position from row/col indices
+        let hx: number, hy: number;
+        if (clue.edgePosition.x === -1) {
+          // Row header: left of row at index edgePosition.y
+          const row = clue.edgePosition.y;
+          const { q, r: ar } = offsetToAxial(row, 0);
+          const pixel = axialToPixel(q, ar, hexSize);
+          hx = pixel.x - hexSize * 2;
+          hy = pixel.y;
+        } else {
+          // Column header: top of column at index edgePosition.x
+          const col = clue.edgePosition.x;
+          const { q, r: ar } = offsetToAxial(0, col);
+          const pixel = axialToPixel(q, ar, hexSize);
+          hx = pixel.x;
+          hy = pixel.y - hexSize * 1.8;
+        }
+        headers.push({ x: hx, y: hy, text: `${clue.mineCount}` });
       } else {
         map.set(clue.displayKey, {
           type: clue.type,
@@ -143,6 +156,13 @@ export function HexGrid({ definition }: HexGridProps) {
   }, [state.clues, hexSize]);
 
   const gameLost = useMemo(() => isGameLost(grid), [grid]);
+
+  // Auto-resume if undo removes the loss state (undoing a mine hit)
+  useEffect(() => {
+    if (state.paused && !state.solved && !gameLost) {
+      dispatch({ type: 'RESUME' });
+    }
+  }, [state.paused, state.solved, gameLost, dispatch]);
 
   // --- Interaction handlers ---
 
