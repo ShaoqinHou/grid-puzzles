@@ -13,6 +13,7 @@ import { constrainedFill, buildSolutionFromAssignments } from './constrainedFill
 import { trimShape } from './shapeTrimmer';
 import type { PuzzleBlueprint, PuzzleStep, StepStrategy, CellTarget } from './compilerTypes';
 import { CompilationError } from './compilerTypes';
+import { explainStep, type SolutionStep } from './explainer';
 
 const STRATEGY_POOL: readonly StepStrategy[] = [
   { kind: 'clue', type: 'adjacent' },
@@ -148,6 +149,7 @@ export function compilePuzzle(
 
   // ── Phase 2: Process steps ──
   const accumulatedClues: HexMineExplicitClue[] = [];
+  const solutionSteps: SolutionStep[] = [];
 
   // Temp solution for verification
   const tempSolution: HexMineGrid = Array.from({ length: height }, () =>
@@ -258,6 +260,19 @@ export function compilePuzzle(
     // Update temp grids again
     updateTempSolution(tempSolution, assignments, width, height);
     updateTempGrid(tempGrid, assignments, revealedSet, tempSolution, width, height);
+
+    // Emit solution step with explanation
+    const lastClue = accumulatedClues.length > 0 ? accumulatedClues[accumulatedClues.length - 1] : null;
+    const stepClue = (strategy.kind === 'clue' && lastClue) ? lastClue : null;
+    solutionSteps.push(explainStep(
+      step.id,
+      step.label ?? `Step ${step.id}`,
+      resolvedTarget.row,
+      resolvedTarget.col,
+      targetValue as 0 | 1,
+      stepClue,
+      strategy.kind,
+    ));
 
     stepsProcessed++;
   }
@@ -374,8 +389,12 @@ export function compilePuzzle(
   }
 
   // ── Phase 9: Return ──
-  const clueData: HexMineClues = accumulatedClues.length > 0
-    ? { clues: accumulatedClues, questionMarks: [] }
+  const clueData: HexMineClues = accumulatedClues.length > 0 || solutionSteps.length > 0
+    ? {
+        clues: accumulatedClues,
+        questionMarks: [],
+        solutionPath: solutionSteps.length > 0 ? solutionSteps : undefined,
+      }
     : null;
 
   log.push(`Done: ${accumulatedClues.length} clues, ${mineCount} mines, solvable=${solvable}`);

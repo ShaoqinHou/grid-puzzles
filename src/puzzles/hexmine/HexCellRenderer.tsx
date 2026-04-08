@@ -56,6 +56,7 @@ export interface HexCellProps {
   readonly clueInfo?: ClueDisplayInfo;
   readonly isQuestionMark?: boolean;
   readonly isScopeHighlight?: boolean;
+  readonly isPathTarget?: boolean;
   readonly onMouseDown: (e: React.MouseEvent) => void;
   readonly onContextMenu: (e: React.MouseEvent) => void;
   readonly onMouseEnter: () => void;
@@ -75,6 +76,7 @@ export function HexCellRenderer({
   clueInfo,
   isQuestionMark,
   isScopeHighlight,
+  isPathTarget,
   onMouseDown,
   onContextMenu,
   onMouseEnter,
@@ -282,6 +284,11 @@ export function HexCellRenderer({
   if (isScopeHighlight) {
     stroke = 'var(--color-accent)';
     strokeWidth = 2;
+  }
+
+  if (isPathTarget) {
+    stroke = 'var(--color-warning)';
+    strokeWidth = 3;
   }
 
   if (isHinted) {

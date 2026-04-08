@@ -42,6 +42,8 @@ export interface HexMineClueData {
   readonly clues: readonly HexMineExplicitClue[];
   /** Coordinate keys of cells that show ? instead of their number */
   readonly questionMarks: readonly string[];
+  /** Solution path from compiler (if compiled puzzle) */
+  readonly solutionPath?: readonly import('./compiler/explainer').SolutionStep[];
 }
 
 /** null for easy (standard minesweeper), HexMineClueData for medium+ */

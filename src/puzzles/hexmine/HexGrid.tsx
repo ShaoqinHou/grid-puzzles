@@ -19,7 +19,9 @@ import { HexCellRenderer } from './HexCellRenderer';
 import { HexMineLegend } from './HexMineLegend';
 import { HexMineConfigPanel } from './HexMineConfigPanel';
 import { LevelPackPanel } from './LevelPackPanel';
+import { SolutionPathPanel } from './SolutionPathPanel';
 import { saveProgress } from './levelPacks';
+import type { SolutionStep } from './compiler/explainer';
 
 interface HexGridProps {
   definition: PuzzleDefinition;
@@ -56,6 +58,8 @@ export function HexGrid({ definition }: HexGridProps) {
   const [showLegend, setShowLegend] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [showLevels, setShowLevels] = useState(false);
+  const [showSolutionPath, setShowSolutionPath] = useState(false);
+  const [activePathStep, setActivePathStep] = useState<SolutionStep | null>(null);
   const [hoveredScope, setHoveredScope] = useState<ReadonlySet<string> | null>(null);
 
   const grid = state.grid as HexMineGrid;
@@ -485,11 +489,19 @@ export function HexGrid({ definition }: HexGridProps) {
         </button>
         <button
           type="button"
-          onClick={() => { setShowLevels((v) => !v); setShowLegend(false); setShowConfig(false); }}
+          onClick={() => { setShowLevels((v) => !v); setShowLegend(false); setShowConfig(false); setShowSolutionPath(false); }}
           className="text-xs px-2 py-0.5 rounded bg-bg-tertiary hover:bg-accent-hover text-text-secondary hover:text-white transition-colors"
           title="Level Packs"
         >
           ▤
+        </button>
+        <button
+          type="button"
+          onClick={() => { setShowSolutionPath((v) => !v); setShowLegend(false); setShowConfig(false); setShowLevels(false); }}
+          className="text-xs px-2 py-0.5 rounded bg-bg-tertiary hover:bg-accent-hover text-text-secondary hover:text-white transition-colors"
+          title="Solution Path"
+        >
+          📋
         </button>
       </div>
 
@@ -506,6 +518,14 @@ export function HexGrid({ definition }: HexGridProps) {
       {/* Level packs */}
       {showLevels && (
         <LevelPackPanel onClose={() => setShowLevels(false)} />
+      )}
+
+      {/* Solution path panel */}
+      {showSolutionPath && (
+        <SolutionPathPanel
+          onClose={() => { setShowSolutionPath(false); setActivePathStep(null); }}
+          onHighlightStep={(step) => setActivePathStep(step)}
+        />
       )}
 
       {/* SVG Hex Grid */}
@@ -531,7 +551,15 @@ export function HexGrid({ definition }: HexGridProps) {
             }
             clueInfo={clueMap.get(c.key)}
             isQuestionMark={questionMarkSet.has(c.key)}
-            isScopeHighlight={hoveredScope !== null && hoveredScope.has(c.key)}
+            isScopeHighlight={
+              (hoveredScope !== null && hoveredScope.has(c.key)) ||
+              (activePathStep !== null && activePathStep.scopeKeys.includes(c.key))
+            }
+            isPathTarget={
+              activePathStep !== null &&
+              activePathStep.targetRow === c.row &&
+              activePathStep.targetCol === c.col
+            }
             onMouseDown={(e) => handleCellClick(c.row, c.col, e)}
             onContextMenu={(e) => handleContextMenu(c.row, c.col, e)}
             onMouseEnter={() => {
