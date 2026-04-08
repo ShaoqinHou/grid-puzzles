@@ -3,6 +3,7 @@ import { useGameState } from '@/engine/GameStateProvider';
 import { usePanelManager } from '@/engine/PanelManager';
 import { LEVEL_PACKS, loadProgress, packCompletionCount, type LevelDef, type LevelPack } from './levelPacks';
 import { hexmineClueConfig, generateHexMine } from './generate';
+import { compilePuzzle } from './compiler';
 import { formatElapsed } from '@/utils/formatters';
 
 function PackHeader({ pack, completedCount, expanded, onToggle }: {
@@ -78,19 +79,29 @@ export function LevelPackPanel({ onClose }: { onClose: () => void }) {
   const progress = useMemo(() => loadProgress(), []);
 
   const handlePlay = (level: LevelDef) => {
-    // Save current config, apply level overrides
-    const savedConfig = { ...hexmineClueConfig };
+    let instance;
 
-    if (level.config) {
-      Object.assign(hexmineClueConfig, level.config);
+    if (level.blueprint) {
+      // Use the compiler for blueprint-based levels
+      try {
+        instance = compilePuzzle(level.blueprint);
+      } catch {
+        // Fallback to standard generation if compilation fails
+        hexmineClueConfig.seed = level.seed;
+        instance = generateHexMine(0, 0, level.difficulty);
+        hexmineClueConfig.seed = null;
+      }
+    } else {
+      // Standard seed-based generation
+      const savedConfig = { ...hexmineClueConfig };
+      if (level.config) {
+        Object.assign(hexmineClueConfig, level.config);
+      }
+      hexmineClueConfig.seed = level.seed;
+      instance = generateHexMine(0, 0, level.difficulty);
+      Object.assign(hexmineClueConfig, savedConfig);
+      hexmineClueConfig.seed = null;
     }
-    hexmineClueConfig.seed = level.seed;
-
-    const instance = generateHexMine(0, 0, level.difficulty);
-
-    // Restore config (except seed which resets to null)
-    Object.assign(hexmineClueConfig, savedConfig);
-    hexmineClueConfig.seed = null;
 
     dispatch({
       type: 'NEW_GAME',

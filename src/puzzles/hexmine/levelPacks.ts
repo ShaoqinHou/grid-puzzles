@@ -1,5 +1,6 @@
 import type { Difficulty } from '@/types';
 import { loadFromStorage, saveToStorage } from '@/services/storage';
+import type { PuzzleBlueprint } from './compiler/compilerTypes';
 
 const PROGRESS_KEY = 'grid-puzzles:hexmine-progress';
 
@@ -17,6 +18,8 @@ export interface LevelDef {
     minEdgeHeaders: number;
     loseOnWrongFlag: boolean;
   }>;
+  /** Optional compiled blueprint — overrides seed-based generation */
+  readonly blueprint?: PuzzleBlueprint;
 }
 
 export interface LevelPack {
@@ -89,6 +92,84 @@ export const LEVEL_PACKS: readonly LevelPack[] = [
       { id: 'ch-6', name: 'Expert II', seed: 3006, difficulty: 'expert' },
       { id: 'ch-7', name: 'Master', seed: 3007, difficulty: 'expert' },
       { id: 'ch-8', name: 'Grand Master', seed: 3008, difficulty: 'expert' },
+    ],
+  },
+  {
+    id: 'compiled',
+    name: 'Crafted Puzzles',
+    description: 'Backwards-generated with designed solving paths',
+    levels: [
+      {
+        id: 'comp-1', name: 'Simple Path', seed: 4001, difficulty: 'easy',
+        blueprint: {
+          id: 'comp-1', name: 'Simple Path', width: 8, height: 8,
+          mineDensity: 0.15, seed: 4001,
+          steps: [
+            { id: 0, target: { kind: 'auto' }, targetValue: 1,
+              requiredStrategy: { kind: 'clue', type: 'adjacent' } },
+            { id: 1, target: { kind: 'auto' }, targetValue: 0,
+              requiredStrategy: { kind: 'clue', type: 'adjacent' } },
+            { id: 2, target: { kind: 'auto' }, targetValue: 1,
+              requiredStrategy: { kind: 'clue', type: 'adjacent' } },
+          ],
+        },
+      },
+      {
+        id: 'comp-2', name: 'Line Logic', seed: 4002, difficulty: 'medium',
+        blueprint: {
+          id: 'comp-2', name: 'Line Logic', width: 10, height: 10,
+          mineDensity: 0.16, seed: 4002,
+          steps: [
+            { id: 0, target: { kind: 'auto' }, targetValue: 1,
+              requiredStrategy: { kind: 'clue', type: 'line' } },
+            { id: 1, target: { kind: 'auto' }, targetValue: 0,
+              requiredStrategy: { kind: 'clue', type: 'adjacent' } },
+            { id: 2, target: { kind: 'auto' }, targetValue: 1,
+              requiredStrategy: { kind: 'clue', type: 'adjacent', special: 'contiguous' } },
+            { id: 3, target: { kind: 'auto' }, targetValue: 1,
+              requiredStrategy: { kind: 'clue', type: 'adjacent' } },
+          ],
+        },
+      },
+      {
+        id: 'comp-3', name: 'Mixed Mastery', seed: 4003, difficulty: 'hard',
+        blueprint: {
+          id: 'comp-3', name: 'Mixed Mastery', width: 10, height: 10,
+          mineDensity: 0.18, seed: 4003,
+          steps: [
+            { id: 0, target: { kind: 'auto' }, targetValue: 1,
+              requiredStrategy: { kind: 'clue', type: 'adjacent' } },
+            { id: 1, target: { kind: 'auto' }, targetValue: 1,
+              requiredStrategy: { kind: 'clue', type: 'line' } },
+            { id: 2, target: { kind: 'auto' }, targetValue: 0,
+              requiredStrategy: { kind: 'clue', type: 'range' } },
+            { id: 3, target: { kind: 'auto' }, targetValue: 1,
+              requiredStrategy: { kind: 'clue', type: 'edge-header' } },
+            { id: 4, target: { kind: 'auto' }, targetValue: 0,
+              requiredStrategy: { kind: 'clue', type: 'adjacent', special: 'nonContiguous' } },
+          ],
+        },
+      },
+      {
+        id: 'comp-4', name: 'Full Auto 15', seed: 4004, difficulty: 'hard',
+        blueprint: {
+          id: 'comp-4', name: 'Full Auto 15', width: 12, height: 12,
+          mineDensity: 0.18, seed: 4004,
+          steps: [],
+          autoStepCount: 15,
+          defaultDifficulty: 'hard',
+        },
+      },
+      {
+        id: 'comp-5', name: 'Full Auto 20', seed: 4005, difficulty: 'expert',
+        blueprint: {
+          id: 'comp-5', name: 'Full Auto 20', width: 14, height: 14,
+          mineDensity: 0.20, seed: 4005,
+          steps: [],
+          autoStepCount: 20,
+          defaultDifficulty: 'expert',
+        },
+      },
     ],
   },
 ];
