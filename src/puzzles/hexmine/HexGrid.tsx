@@ -564,7 +564,10 @@ export function HexGrid({ definition }: HexGridProps) {
             onContextMenu={(e) => handleContextMenu(c.row, c.col, e)}
             onMouseEnter={() => {
               setHoverCell(c.key);
-              setHoveredScope(clueScopeMap.get(c.key) ?? null);
+              // Only show scope highlight on revealed clue cells (not hidden — prevents info leak)
+              const cellVal = grid[c.row][c.col];
+              const isRevealed = typeof cellVal === 'number' || cellVal === 'disabled';
+              setHoveredScope(isRevealed ? (clueScopeMap.get(c.key) ?? null) : null);
             }}
             onMouseLeave={() => {
               setHoverCell(null);
