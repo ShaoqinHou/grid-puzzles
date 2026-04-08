@@ -1,36 +1,125 @@
 import type { PuzzleInstance } from '@/engine/puzzleTypes';
+import type { GridShape } from '@/types';
 import type { HexMineGrid, HexMineClues, HexMineCell, HexMineExplicitClue, HexMineClueData } from '../types';
 import type { CellState } from '../solver/types';
-import { coordKey, getOffsetNeighbors } from '../hex';
+import { coordKey, getOffsetNeighbors, getNeighborsClockwise } from '../hex';
 import { simulateCascade } from '../solver/simulate';
 import { solveFromRevealed } from '../solve';
 import { validatePuzzleIntegrity } from '../validate';
 import { createSeededRandom } from '../seededRandom';
-import { findAdjacentClue } from './clueFactory';
+import { findAdjacentClue, findLineClue, findRangeClue, findEdgeHeaderClue, findFrontierCell } from './clueFactory';
 import { isCellDetermined, hasKnowledgeContradiction } from './verify';
 import { constrainedFill, buildSolutionFromAssignments } from './constrainedFill';
-import type { PuzzleBlueprint, PuzzleStep } from './compilerTypes';
+import type { PuzzleBlueprint, PuzzleStep, StepStrategy, CellTarget } from './compilerTypes';
 import { CompilationError } from './compilerTypes';
 
+const STRATEGY_POOL: readonly StepStrategy[] = [
+  { kind: 'clue', type: 'adjacent' },
+  { kind: 'clue', type: 'adjacent', special: 'contiguous' },
+  { kind: 'clue', type: 'adjacent', special: 'nonContiguous' },
+  { kind: 'clue', type: 'line' },
+  { kind: 'clue', type: 'range' },
+  { kind: 'clue', type: 'edge-header' },
+];
+
 /**
- * Compile a puzzle from a blueprint using backwards constraint-based generation.
- *
- * Algorithm:
- * 1. Initialize grid, place cascade origin
- * 2. For each step: assign target → check contradiction → create clue → verify determination
- * 3. Constrained fill remaining unknowns (respects clue scope budgets)
- * 4. Build solution + player grids
- * 5. Verify solvability + integrity
- *
- * @throws CompilationError if constraints conflict or puzzle is unsolvable
+ * Auto-generate steps for a blueprint with no explicit steps.
+ */
+function autoGenerateSteps(
+  count: number,
+  difficulty: string | undefined,
+  allowedStrategies: readonly StepStrategy[] | undefined,
+  rng: () => number,
+): PuzzleStep[] {
+  const pool = allowedStrategies ?? STRATEGY_POOL;
+  const steps: PuzzleStep[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const strategy = pool[Math.floor(rng() * pool.length)];
+    const targetValue = rng() < 0.5 ? 1 : 0;
+
+    steps.push({
+      id: i,
+      label: `Auto step ${i}`,
+      target: { kind: 'auto' },
+      targetValue: targetValue as 0 | 1,
+      requiredStrategy: strategy,
+    });
+  }
+
+  return steps;
+}
+
+/**
+ * Resolve a CellTarget to a concrete coordinate.
+ */
+function resolveTarget(
+  target: CellTarget,
+  assignments: Map<string, CellState>,
+  width: number,
+  height: number,
+  rng: () => number,
+): { row: number; col: number } | null {
+  if (target.kind === 'coord') {
+    return { row: target.row, col: target.col };
+  }
+  // Auto: pick from frontier
+  return findFrontierCell(assignments, width, height, rng);
+}
+
+/**
+ * Try to create a clue for a strategy, with fallback to adjacent if the specific type fails.
+ */
+function createClueForStrategy(
+  strategy: StepStrategy,
+  target: { row: number; col: number },
+  solution: HexMineGrid,
+  assignments: Map<string, CellState>,
+  shape: boolean[][],
+  width: number,
+  height: number,
+  rng: () => number,
+): HexMineExplicitClue | null {
+  if (strategy.kind !== 'clue') return null;
+
+  const { type, special } = strategy;
+
+  switch (type) {
+    case 'adjacent':
+      return findAdjacentClue(target, special, solution, assignments, width, height, rng);
+    case 'line':
+      return findLineClue(target, special, solution, assignments, shape, width, height, rng);
+    case 'range':
+      return findRangeClue(target, solution, assignments, width, height, rng);
+    case 'edge-header':
+      return findEdgeHeaderClue(target, solution, assignments, width, height, rng);
+    default:
+      // Fallback to adjacent
+      return findAdjacentClue(target, undefined, solution, assignments, width, height, rng);
+  }
+}
+
+/**
+ * Compile a puzzle from a blueprint.
+ * @throws CompilationError on failure
  */
 export function compilePuzzle(
   blueprint: PuzzleBlueprint,
   rngFn?: () => number,
 ): PuzzleInstance<HexMineGrid, HexMineClues, HexMineCell> {
   const rng = rngFn ?? createSeededRandom(blueprint.seed);
-  const { width, height, mineDensity, steps } = blueprint;
+  const { width, height, mineDensity } = blueprint;
   const log: string[] = [];
+
+  // Resolve steps (explicit or auto-generated)
+  const steps: PuzzleStep[] = blueprint.steps.length > 0
+    ? [...blueprint.steps]
+    : autoGenerateSteps(
+        blueprint.autoStepCount ?? 10,
+        blueprint.defaultDifficulty,
+        blueprint.allowedStrategies,
+        rng,
+      );
 
   // ── Phase 0: Initialize ──
   const assignments = new Map<string, CellState>();
@@ -39,10 +128,10 @@ export function compilePuzzle(
       assignments.set(coordKey(r, c), 'unknown');
     }
   }
-  log.push(`Initialized ${width}x${height} grid, ${width * height} cells`);
+
+  const shape: GridShape = Array.from({ length: height }, () => Array(width).fill(true));
 
   // ── Phase 1: Cascade origin ──
-  // Pick center-ish cell as origin, mark it + neighbors as safe
   const originR = Math.floor(height / 2);
   const originC = Math.floor(width / 2);
   assignments.set(coordKey(originR, originC), 'safe');
@@ -54,13 +143,12 @@ export function compilePuzzle(
   for (const n of getOffsetNeighbors(originR, originC, width, height)) {
     revealedSet.add(coordKey(n.row, n.col));
   }
-  log.push(`Cascade origin at (${originR},${originC}), ${revealedSet.size} safe cells`);
+  log.push(`Origin at (${originR},${originC}), ${revealedSet.size} safe`);
 
   // ── Phase 2: Process steps ──
   const accumulatedClues: HexMineExplicitClue[] = [];
 
-  // Build a temporary solution for verification (we'll rebuild after fill)
-  // For now, safe cells = 0 count (will be recomputed)
+  // Temp solution for verification
   const tempSolution: HexMineGrid = Array.from({ length: height }, () =>
     Array.from<HexMineCell>({ length: width }).fill(0),
   );
@@ -68,126 +156,136 @@ export function compilePuzzle(
     Array.from<HexMineCell>({ length: width }).fill('hidden'),
   );
 
-  // Apply initial reveals to tempGrid
   for (const key of revealedSet) {
     const [r, c] = key.split(',').map(Number);
-    tempGrid[r][c] = 0; // will be recomputed
+    tempGrid[r][c] = 0;
   }
 
+  let stepsProcessed = 0;
+
   for (const step of steps) {
-    log.push(`\n--- Step ${step.id}: ${step.label ?? 'unnamed'} ---`);
+    // Resolve target
+    const resolvedTarget = resolveTarget(step.target, assignments, width, height, rng);
+    if (!resolvedTarget) {
+      log.push(`Step ${step.id}: no frontier cell available, skipping`);
+      continue;
+    }
 
-    const { target, targetValue, requiredStrategy } = step;
-    const targetKey = coordKey(target.row, target.col);
+    const targetKey = coordKey(resolvedTarget.row, resolvedTarget.col);
 
-    // 2a: Check target is in bounds and unassigned
-    if (target.row < 0 || target.row >= height || target.col < 0 || target.col >= width) {
+    // Check target is unassigned
+    if (assignments.get(targetKey) !== 'unknown') {
+      if (step.target.kind === 'auto') {
+        log.push(`Step ${step.id}: auto-picked ${targetKey} already assigned, skipping`);
+        continue;
+      }
       throw new CompilationError(
-        `Step ${step.id}: target (${target.row},${target.col}) out of bounds`,
+        `Step ${step.id}: target ${targetKey} already assigned`,
         step.id, log,
       );
     }
 
-    const currentState = assignments.get(targetKey);
-    if (currentState !== 'unknown') {
-      throw new CompilationError(
-        `Step ${step.id}: target ${targetKey} already assigned as ${currentState}`,
-        step.id, log,
-      );
-    }
-
-    // 2b: Assign target value
+    // Assign target value
+    const targetValue = step.targetValue ?? (rng() < 0.5 ? 1 : 0);
     assignments.set(targetKey, targetValue === 1 ? 'mine' : 'safe');
     if (targetValue === 1) {
-      tempSolution[target.row][target.col] = 'mine';
+      tempSolution[resolvedTarget.row][resolvedTarget.col] = 'mine';
     }
-    log.push(`Assigned ${targetKey} = ${targetValue === 1 ? 'mine' : 'safe'}`);
+    log.push(`Step ${step.id}: ${targetKey} = ${targetValue === 1 ? 'mine' : 'safe'}`);
 
-    // 2b+: Immediate contradiction check
-    // Rebuild temp solution with current assignments for checking
+    // Update temp grids
     updateTempSolution(tempSolution, assignments, width, height);
     updateTempGrid(tempGrid, assignments, revealedSet, tempSolution, width, height);
 
+    // Contradiction check
     if (hasKnowledgeContradiction(tempGrid, tempSolution, assignments, accumulatedClues, width, height)) {
+      if (step.target.kind === 'auto') {
+        // Undo and skip
+        assignments.set(targetKey, 'unknown');
+        if (targetValue === 1) tempSolution[resolvedTarget.row][resolvedTarget.col] = 0;
+        log.push(`Step ${step.id}: contradiction, skipping`);
+        continue;
+      }
       throw new CompilationError(
-        `Step ${step.id}: assigning ${targetKey} creates a contradiction`,
+        `Step ${step.id}: assignment creates contradiction`,
         step.id, log,
       );
     }
 
-    // 2c: Create clue based on strategy
-    if (requiredStrategy.kind === 'clue') {
-      if (requiredStrategy.type === 'adjacent') {
-        const clue = findAdjacentClue(
-          target, targetValue, requiredStrategy.special,
-          tempGrid, tempSolution, assignments, width, height, rng,
+    // Create clue
+    const strategy = step.requiredStrategy ?? { kind: 'clue', type: 'adjacent' };
+
+    if (strategy.kind === 'clue') {
+      const clue = createClueForStrategy(
+        strategy, resolvedTarget, tempSolution, assignments, shape, width, height, rng,
+      );
+
+      if (!clue) {
+        // Try fallback to adjacent
+        const fallback = findAdjacentClue(
+          resolvedTarget, undefined, tempSolution, assignments, width, height, rng,
         );
-        if (!clue) {
+        if (fallback) {
+          accumulatedClues.push(fallback);
+          log.push(`Step ${step.id}: ${strategy.type} failed, used adjacent fallback`);
+        } else if (step.target.kind === 'auto') {
+          // Undo and skip
+          assignments.set(targetKey, 'unknown');
+          if (targetValue === 1) tempSolution[resolvedTarget.row][resolvedTarget.col] = 0;
+          log.push(`Step ${step.id}: no clue possible, skipping`);
+          continue;
+        } else {
           throw new CompilationError(
-            `Step ${step.id}: cannot find adjacent clue covering ${targetKey}`,
+            `Step ${step.id}: cannot create ${strategy.type} clue for ${targetKey}`,
             step.id, log,
           );
         }
+      } else {
         accumulatedClues.push(clue);
-        log.push(`Created adjacent clue at ${clue.displayKey} (count=${clue.mineCount}, special=${clue.special})`);
+        log.push(`Step ${step.id}: created ${clue.type} clue at ${clue.displayKey}`);
       }
-      // TODO: line, range, edge-header clue factories (Phase 2)
-    } else if (requiredStrategy.kind === 'pre-revealed') {
+    } else if (strategy.kind === 'pre-revealed') {
       revealedSet.add(targetKey);
-      log.push(`Pre-revealed ${targetKey}`);
+      log.push(`Step ${step.id}: pre-revealed ${targetKey}`);
     }
 
-    // 2d: Verify target is determined
-    updateTempSolution(tempSolution, assignments, width, height);
-    updateTempGrid(tempGrid, assignments, revealedSet, tempSolution, width, height);
-
-    const determined = isCellDetermined(
-      targetKey, tempGrid, tempSolution, assignments,
-      accumulatedClues, width, height,
-    );
-
-    if (!determined) {
-      log.push(`WARNING: target ${targetKey} not uniquely determined by solver`);
-      // Don't throw — the solver is incomplete, puzzle may still be valid
-    } else {
-      log.push(`Verified: ${targetKey} is uniquely determined`);
-    }
-
-    // 2f: Update revealed set for safe targets
+    // Update revealed set
     if (targetValue === 0) {
       revealedSet.add(targetKey);
     }
+
+    // Update temp grids again
+    updateTempSolution(tempSolution, assignments, width, height);
+    updateTempGrid(tempGrid, assignments, revealedSet, tempSolution, width, height);
+
+    stepsProcessed++;
   }
 
-  log.push('\n--- Phase 3: Constrained fill ---');
+  log.push(`\nProcessed ${stepsProcessed}/${steps.length} steps, ${accumulatedClues.length} clues`);
 
   // ── Phase 3: Constrained fill ──
   constrainedFill(assignments, tempSolution, accumulatedClues, width, height, mineDensity, rng);
-  log.push(`Fill complete. Mines: ${[...assignments.values()].filter((s) => s === 'mine').length}`);
+  const mineCount = [...assignments.values()].filter((s) => s === 'mine').length;
+  log.push(`Fill: ${mineCount} mines`);
 
-  // ── Phase 4: Build solution grid ──
+  // ── Phase 4: Build solution ──
   const solution = buildSolutionFromAssignments(assignments, width, height);
-  log.push('Solution grid built');
 
-  // ── Phase 5: Recompute clue values from final mine layout ──
+  // ── Phase 5: Recompute clue values ──
   for (const clue of accumulatedClues) {
-    let actualMines = 0;
+    let actual = 0;
     for (const key of clue.cellKeys) {
       const [r, c] = key.split(',').map(Number);
-      if (solution[r][c] === 'mine') actualMines++;
+      if (solution[r]?.[c] === 'mine') actual++;
     }
-    // Mutate mineCount to match reality
-    (clue as { mineCount: number }).mineCount = actualMines;
+    (clue as { mineCount: number }).mineCount = actual;
   }
-  log.push('Clue values recomputed from final solution');
 
   // ── Phase 6: Build player grid ──
-  // Find a 0-cell for cascade
   let cascadeStart: { row: number; col: number } | null = null;
   if (solution[originR][originC] === 0) {
     cascadeStart = { row: originR, col: originC };
   } else {
-    // Find any 0-cell
     for (let r = 0; r < height && !cascadeStart; r++) {
       for (let c = 0; c < width && !cascadeStart; c++) {
         if (solution[r][c] === 0) cascadeStart = { row: r, col: c };
@@ -199,34 +297,83 @@ export function compilePuzzle(
     ? simulateCascade(solution, cascadeStart, width, height)
     : Array.from({ length: height }, () => Array.from<HexMineCell>({ length: width }).fill('hidden'));
 
-  log.push(`Player grid built, cascade from ${cascadeStart ? `(${cascadeStart.row},${cascadeStart.col})` : 'none'}`);
-
-  // ── Phase 7: Verify solvability ──
-  const cluesForSolver = accumulatedClues.length > 0 ? accumulatedClues : undefined;
-  const solvable = solveFromRevealed(playerGrid, solution, width, height, cluesForSolver);
-  if (!solvable) {
-    log.push('WARNING: puzzle not solvable with current clues');
-    // Don't throw — let the caller decide
-  } else {
-    log.push('Puzzle verified solvable');
+  // Apply disabled cells
+  const hasDisabled = shape.some((row) => row.some((v) => !v));
+  if (hasDisabled) {
+    for (let r = 0; r < height; r++) {
+      for (let c = 0; c < width; c++) {
+        if (!shape[r][c]) {
+          playerGrid[r][c] = 'disabled';
+          solution[r][c] = 'disabled';
+        }
+      }
+    }
   }
+
+  // ── Phase 7: Verify solvability + supplement if needed ──
+  let solvable = solveFromRevealed(
+    playerGrid, solution, width, height,
+    accumulatedClues.length > 0 ? accumulatedClues : undefined,
+  );
+
+  // If not solvable, add supplementary adjacent clues on revealed frontier cells
+  if (!solvable) {
+    log.push('Not solvable — adding supplementary clues...');
+    for (let r = 0; r < height && !solvable; r++) {
+      for (let c = 0; c < width && !solvable; c++) {
+        if (typeof playerGrid[r][c] !== 'number' || playerGrid[r][c] === 0) continue;
+        // Check if this cell already has a clue
+        const ck = coordKey(r, c);
+        if (accumulatedClues.some((cl) => cl.displayKey === ck)) continue;
+
+        const cwNeighbors = getNeighborsClockwise(r, c, width, height);
+        if (cwNeighbors.some((n) => n === null)) continue;
+
+        const cellKeys = (cwNeighbors as Array<{ row: number; col: number }>)
+          .map((n) => coordKey(n.row, n.col));
+        const mc = cellKeys.reduce((cnt, key) => {
+          const [nr, nc] = key.split(',').map(Number);
+          return cnt + (solution[nr]?.[nc] === 'mine' ? 1 : 0);
+        }, 0);
+
+        if (mc === 0) continue;
+
+        accumulatedClues.push({
+          id: `supp-adj-${r},${c}`,
+          type: 'adjacent',
+          cellKeys,
+          mineCount: mc,
+          special: 'none',
+          displayKey: ck,
+        });
+
+        solvable = solveFromRevealed(
+          playerGrid, solution, width, height, accumulatedClues,
+        );
+      }
+    }
+    log.push(`After supplements: solvable=${solvable}, clues=${accumulatedClues.length}`);
+  }
+
+  log.push(`Solvable: ${solvable}`);
 
   // ── Phase 8: Validate integrity ──
-  const integrityErrors = validatePuzzleIntegrity(
-    playerGrid, solution, accumulatedClues.length > 0 ? accumulatedClues : null, null, width, height,
+  const errors = validatePuzzleIntegrity(
+    playerGrid, solution,
+    accumulatedClues.length > 0 ? accumulatedClues : null,
+    hasDisabled ? shape : null,
+    width, height,
   );
-  if (integrityErrors.length > 0) {
-    log.push(`Integrity errors: ${integrityErrors.map((e) => e.message).join(', ')}`);
-  } else {
-    log.push('Integrity validation passed');
+  if (errors.length > 0) {
+    log.push(`Integrity: ${errors.length} errors`);
   }
 
-  // ── Phase 9: Return PuzzleInstance ──
+  // ── Phase 9: Return ──
   const clueData: HexMineClues = accumulatedClues.length > 0
     ? { clues: accumulatedClues, questionMarks: [] }
     : null;
 
-  log.push(`\nCompilation complete: ${accumulatedClues.length} clues, solvable=${solvable}`);
+  log.push(`Done: ${accumulatedClues.length} clues, ${mineCount} mines, solvable=${solvable}`);
 
   return {
     grid: playerGrid,
@@ -235,10 +382,10 @@ export function compilePuzzle(
     emptyCell: 'hidden' as HexMineCell,
     width,
     height,
+    ...(hasDisabled ? { shape } : {}),
   };
 }
 
-/** Update temp solution to reflect current assignments */
 function updateTempSolution(
   solution: HexMineGrid,
   assignments: Map<string, CellState>,
@@ -251,7 +398,6 @@ function updateTempSolution(
       if (state === 'mine') {
         solution[r][c] = 'mine';
       } else if (state === 'safe') {
-        // Compute neighbor count from current assignments
         const neighbors = getOffsetNeighbors(r, c, width, height);
         let count = 0;
         for (const n of neighbors) {
@@ -263,7 +409,6 @@ function updateTempSolution(
   }
 }
 
-/** Update temp grid to reflect revealed cells */
 function updateTempGrid(
   grid: HexMineGrid,
   assignments: Map<string, CellState>,
@@ -277,8 +422,6 @@ function updateTempGrid(
       const key = coordKey(r, c);
       if (revealed.has(key) && typeof solution[r][c] === 'number') {
         grid[r][c] = solution[r][c];
-      } else if (assignments.get(key) === 'mine') {
-        grid[r][c] = 'hidden'; // mines stay hidden
       } else {
         grid[r][c] = 'hidden';
       }
