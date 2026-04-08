@@ -10,11 +10,11 @@ export interface LevelDef {
   readonly difficulty: Difficulty;
   /** Optional config overrides for this level */
   readonly config?: Partial<{
-    adjacentClues: boolean;
-    lineClues: boolean;
-    rangeClues: boolean;
-    questionMarks: boolean;
-    edgeHeaders: boolean;
+    minAdjacentClues: number;
+    minLineClues: number;
+    minRangeClues: number;
+    minQuestionMarks: number;
+    minEdgeHeaders: number;
     loseOnWrongFlag: boolean;
   }>;
 }
@@ -52,27 +52,27 @@ export const LEVEL_PACKS: readonly LevelPack[] = [
     levels: [
       {
         id: 'ct-1', name: 'Contiguous {N}', seed: 2001, difficulty: 'medium',
-        config: { adjacentClues: true, lineClues: false, rangeClues: false, questionMarks: false, edgeHeaders: false },
+        config: { minAdjacentClues: 4, minLineClues: 0, minRangeClues: 0, minQuestionMarks: 0, minEdgeHeaders: 0 },
       },
       {
         id: 'ct-2', name: 'Non-Contiguous -N-', seed: 2002, difficulty: 'medium',
-        config: { adjacentClues: true, lineClues: false, rangeClues: false, questionMarks: false, edgeHeaders: false },
+        config: { minAdjacentClues: 4, minLineClues: 0, minRangeClues: 0, minQuestionMarks: 0, minEdgeHeaders: 0 },
       },
       {
         id: 'ct-3', name: 'Line Clues', seed: 2003, difficulty: 'hard',
-        config: { adjacentClues: false, lineClues: true, rangeClues: false, questionMarks: false, edgeHeaders: false },
+        config: { minAdjacentClues: 0, minLineClues: 3, minRangeClues: 0, minQuestionMarks: 0, minEdgeHeaders: 0 },
       },
       {
         id: 'ct-4', name: 'Edge Headers', seed: 2004, difficulty: 'hard',
-        config: { adjacentClues: false, lineClues: false, rangeClues: false, questionMarks: false, edgeHeaders: true },
+        config: { minAdjacentClues: 0, minLineClues: 0, minRangeClues: 0, minQuestionMarks: 0, minEdgeHeaders: 4 },
       },
       {
         id: 'ct-5', name: 'Range Clues', seed: 2005, difficulty: 'expert',
-        config: { adjacentClues: false, lineClues: false, rangeClues: true, questionMarks: false, edgeHeaders: false },
+        config: { minAdjacentClues: 0, minLineClues: 0, minRangeClues: 3, minQuestionMarks: 0, minEdgeHeaders: 0 },
       },
       {
         id: 'ct-6', name: 'Question Marks', seed: 2006, difficulty: 'hard',
-        config: { adjacentClues: true, lineClues: false, rangeClues: false, questionMarks: true, edgeHeaders: false },
+        config: { minAdjacentClues: 3, minLineClues: 0, minRangeClues: 0, minQuestionMarks: 3, minEdgeHeaders: 0 },
       },
     ],
   },

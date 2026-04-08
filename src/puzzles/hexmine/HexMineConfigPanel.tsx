@@ -82,31 +82,36 @@ export function HexMineConfigPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="px-3 py-2 space-y-0.5">
-        <p className="text-[10px] text-text-tertiary uppercase tracking-wide mb-1">Clue Types</p>
-        <Toggle
+        <p className="text-[10px] text-text-tertiary uppercase tracking-wide mb-1">Min Clues to Keep (0 = off)</p>
+        <NumberInput
           label="Adjacent {N} / -N-"
-          checked={cfg.adjacentClues}
-          onChange={(v) => update('adjacentClues', v)}
+          value={cfg.minAdjacentClues}
+          onChange={(v) => update('minAdjacentClues', v)}
+          min={0} max={20}
         />
-        <Toggle
+        <NumberInput
           label="Line clues (directional)"
-          checked={cfg.lineClues}
-          onChange={(v) => update('lineClues', v)}
+          value={cfg.minLineClues}
+          onChange={(v) => update('minLineClues', v)}
+          min={0} max={10}
         />
-        <Toggle
+        <NumberInput
           label="Range clues (radius-2)"
-          checked={cfg.rangeClues}
-          onChange={(v) => update('rangeClues', v)}
+          value={cfg.minRangeClues}
+          onChange={(v) => update('minRangeClues', v)}
+          min={0} max={10}
         />
-        <Toggle
+        <NumberInput
           label="Question marks ?"
-          checked={cfg.questionMarks}
-          onChange={(v) => update('questionMarks', v)}
+          value={cfg.minQuestionMarks}
+          onChange={(v) => update('minQuestionMarks', v)}
+          min={0} max={10}
         />
-        <Toggle
-          label="Edge headers (row/col totals)"
-          checked={cfg.edgeHeaders}
-          onChange={(v) => update('edgeHeaders', v)}
+        <NumberInput
+          label="Edge headers"
+          value={cfg.minEdgeHeaders}
+          onChange={(v) => update('minEdgeHeaders', v)}
+          min={0} max={10}
         />
       </div>
 
@@ -129,49 +134,11 @@ export function HexMineConfigPanel({ onClose }: { onClose: () => void }) {
         />
       </div>
 
-      <div className="px-3 py-2 space-y-0.5 border-t border-grid-line">
-        <p className="text-[10px] text-text-tertiary uppercase tracking-wide mb-1">Quantities</p>
-        <NumberInput
-          label="Adjacent ratio"
-          value={Math.round(cfg.adjacentRatio * 100)}
-          onChange={(v) => update('adjacentRatio', v / 100)}
-          min={0} max={100}
-        />
-        <NumberInput
-          label="Line clues (hard)"
-          value={cfg.lineCountHard}
-          onChange={(v) => update('lineCountHard', v)}
-          min={0} max={10}
-        />
-        <NumberInput
-          label="Line clues (expert)"
-          value={cfg.lineCountExpert}
-          onChange={(v) => update('lineCountExpert', v)}
-          min={0} max={10}
-        />
-        <NumberInput
-          label="Range clues"
-          value={cfg.rangeCount}
-          onChange={(v) => update('rangeCount', v)}
-          min={0} max={10}
-        />
-        <NumberInput
-          label="Question marks"
-          value={cfg.questionMarkCount}
-          onChange={(v) => update('questionMarkCount', v)}
-          min={0} max={10}
-        />
-        <NumberInput
-          label="Edge headers"
-          value={cfg.edgeHeaderCount}
-          onChange={(v) => update('edgeHeaderCount', v)}
-          min={0} max={10}
-        />
-      </div>
-
       <div className="px-3 py-2 border-t border-grid-line">
         <p className="text-[10px] text-text-tertiary">
-          Changes apply on next New Game. Clue types only appear at medium+ difficulty.
+          Hexcells-style pruning: generates all possible clues, then removes
+          unnecessary ones while keeping at least the minimum of each type.
+          Set to 0 to disable a clue type. Changes apply on next New Game.
         </p>
       </div>
     </div>

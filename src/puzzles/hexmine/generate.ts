@@ -24,33 +24,38 @@ const DIFFICULTY_CONFIG: Record<Difficulty, DifficultyConfig> = {
 
 const MAX_ATTEMPTS = 80;
 
-/** Configurable settings (mutable, updated by UI before generation) */
+/**
+ * Configurable settings (mutable, updated by UI before generation).
+ *
+ * Generation uses Hexcells-style iterative pruning:
+ * 1. Place mines, compute all possible clues
+ * 2. Add ALL eligible clues to the puzzle
+ * 3. Iteratively remove clues one by one, checking solvability after each
+ * 4. Stop when minimum counts are reached or puzzle becomes unsolvable
+ *
+ * `min*` fields control how many of each type to KEEP (minimum).
+ * Set to 0 to disable a clue type entirely.
+ */
 export const hexmineClueConfig = {
-  // ── Clue types ──
-  /** Contiguous/nonContiguous adjacent annotations */
-  adjacentClues: true,
-  /** Directional line clues on edge cells */
-  lineClues: true,
-  /** Radius-2 range clues */
-  rangeClues: true,
-  /** Question mark tiles (revealed cells that show ? instead of number) */
-  questionMarks: true,
-  /** Edge headers (row/diagonal mine totals at grid border) */
-  edgeHeaders: true,
+  // ── Clue type minimums (0 = disabled) ──
+  /** Min contiguous/nonContiguous adjacent annotations to keep */
+  minAdjacentClues: 4,
+  /** Min directional line clues to keep */
+  minLineClues: 2,
+  /** Min radius-2 range clues to keep */
+  minRangeClues: 1,
+  /** Min question mark tiles to keep */
+  minQuestionMarks: 2,
+  /** Min edge headers (row/col totals) to keep */
+  minEdgeHeaders: 3,
   // ── Gameplay rules ──
   /** Auto-reveal neighbors of 0-cells */
   cascadeReveal: true,
   /** Click revealed number to auto-reveal when flag count matches */
   chordReveal: true,
-  /** Flagging a safe cell = instant loss (off by default — opt-in for Hexcells-style) */
+  /** Flagging a safe cell = instant loss (off by default) */
   loseOnWrongFlag: false,
-  // ── Quantities ──
-  adjacentRatio: 0.3,
-  lineCountHard: 2,
-  lineCountExpert: 4,
-  rangeCount: 2,
-  questionMarkCount: 3,
-  edgeHeaderCount: 4,
+  // ── Seed ──
   /** Seed for reproducible generation (null = random) */
   seed: null as number | null,
 };
@@ -445,6 +450,64 @@ function generateEdgeHeaders(
   return candidates.slice(0, Math.min(count, candidates.length));
 }
 
+// ── Iterative clue pruning (Hexcells-style) ──
+
+/** Count clues by type */
+function countByType(clues: HexMineExplicitClue[]): Record<string, number> {
+  const counts: Record<string, number> = { adjacent: 0, line: 0, range: 0, 'edge-header': 0 };
+  for (const c of clues) counts[c.type] = (counts[c.type] ?? 0) + 1;
+  return counts;
+}
+
+/**
+ * Iteratively remove clues one by one, testing solvability after each removal.
+ * Respects minimum counts per type from config.
+ * Returns the pruned clue set — every remaining clue is necessary.
+ */
+function pruneClues(
+  allClues: HexMineExplicitClue[],
+  cascadedGrid: HexMineGrid,
+  solution: HexMineGrid,
+  width: number,
+  height: number,
+  cfg: typeof hexmineClueConfig,
+): HexMineExplicitClue[] {
+  const kept = [...allClues];
+  const minCounts: Record<string, number> = {
+    adjacent: cfg.minAdjacentClues,
+    line: cfg.minLineClues,
+    range: cfg.minRangeClues,
+    'edge-header': cfg.minEdgeHeaders,
+  };
+
+  // Shuffle removal order for variety
+  const indices = Array.from({ length: kept.length }, (_, i) => i);
+  shuffle(indices);
+
+  for (const idx of indices) {
+    const clue = kept[idx];
+    if (!clue) continue; // already removed
+
+    // Check if removing this clue would go below minimum for its type
+    const currentCount = countByType(kept.filter(Boolean));
+    if ((currentCount[clue.type] ?? 0) <= (minCounts[clue.type] ?? 0)) {
+      continue; // can't remove — at minimum
+    }
+
+    // Try removing
+    const without = kept.filter((_, i) => i !== idx && _ !== null);
+    const withoutForSolver = without.length > 0 ? without : undefined;
+
+    if (solveFromRevealed(cascadedGrid, solution, width, height, withoutForSolver)) {
+      // Still solvable without this clue — remove it permanently
+      kept[idx] = null as unknown as HexMineExplicitClue;
+    }
+    // Otherwise: clue is necessary, keep it
+  }
+
+  return kept.filter(Boolean);
+}
+
 // ── Main generation ──
 
 export function generateHexMine(
@@ -452,13 +515,13 @@ export function generateHexMine(
   _requestedHeight: number,
   difficulty: Difficulty,
 ): PuzzleInstance<HexMineGrid, HexMineClues, HexMineCell> {
-  // Set up RNG: seeded if seed is provided, else Math.random
   const seed = hexmineClueConfig.seed;
   rng = seed !== null ? createSeededRandom(seed) : Math.random;
   const config = DIFFICULTY_CONFIG[difficulty];
   const { width, height, mineDensity } = config;
   const totalCells = width * height;
   const mineCount = Math.round(totalCells * mineDensity);
+  const cfg = hexmineClueConfig;
 
   let lastSolution: HexMineGrid | null = null;
   let lastClues: HexMineExplicitClue[] | null = null;
@@ -477,44 +540,38 @@ export function generateHexMine(
     const solution = createSolution(width, height, mineCount, safeZone);
     const shape: GridShape = Array.from({ length: height }, () => Array(width).fill(true));
 
-    // Generate difficulty-specific clues (respecting hexmineClueConfig)
-    const clues: HexMineExplicitClue[] = [];
-    const cfg = hexmineClueConfig;
+    // ── Phase 1: Generate ALL possible clues ──
+    const allClues: HexMineExplicitClue[] = [];
 
-    if ((difficulty === 'medium' || difficulty === 'hard' || difficulty === 'expert') && cfg.adjacentClues) {
-      const adjClues = generateAdjacentClues(solution, width, height, cfg.adjacentRatio);
-      clues.push(...adjClues);
+    // All eligible adjacent clues (interior cells with 2+ mine neighbors)
+    if (cfg.minAdjacentClues > 0 && difficulty !== 'easy') {
+      const adjClues = generateAdjacentClues(solution, width, height, 1.0); // 100% — take all
+      allClues.push(...adjClues);
     }
 
-    if ((difficulty === 'hard' || difficulty === 'expert') && cfg.lineClues) {
-      const lineCount = difficulty === 'expert' ? cfg.lineCountExpert : cfg.lineCountHard;
-      const lineClues = generateLineClues(solution, width, height, lineCount, shape);
-      clues.push(...lineClues);
+    // All possible line clues on edge cells
+    if (cfg.minLineClues > 0 && difficulty !== 'easy') {
+      const maxLines = Math.max(cfg.minLineClues * 3, 8); // generate more than needed
+      const lineClues = generateLineClues(solution, width, height, maxLines, shape);
+      allClues.push(...lineClues);
     }
 
-    if (difficulty === 'expert' && cfg.rangeClues) {
-      const existingKeys = new Set(clues.map((c) => c.displayKey));
-      const rangeClues = generateRangeClues(solution, width, height, cfg.rangeCount, existingKeys);
-      clues.push(...rangeClues);
+    // All possible range clues on interior cells
+    if (cfg.minRangeClues > 0 && difficulty !== 'easy') {
+      const existingKeys = new Set(allClues.map((c) => c.displayKey));
+      const maxRange = Math.max(cfg.minRangeClues * 3, 6);
+      const rangeClues = generateRangeClues(solution, width, height, maxRange, existingKeys);
+      allClues.push(...rangeClues);
     }
 
-    if ((difficulty === 'hard' || difficulty === 'expert') && cfg.edgeHeaders) {
-      const headerCount = difficulty === 'expert' ? cfg.edgeHeaderCount : Math.ceil(cfg.edgeHeaderCount / 2);
-      const headers = generateEdgeHeaders(solution, width, height, headerCount);
-      clues.push(...headers);
+    // All possible edge headers
+    if (cfg.minEdgeHeaders > 0 && difficulty !== 'easy') {
+      const maxHeaders = Math.max(cfg.minEdgeHeaders * 3, 10);
+      const headers = generateEdgeHeaders(solution, width, height, maxHeaders);
+      allClues.push(...headers);
     }
 
-    // Generate question mark set (stored separately, not in clues array)
-    let questionMarks: Set<string> = new Set();
-    if ((difficulty === 'hard' || difficulty === 'expert') && cfg.questionMarks) {
-      const allClueKeys = new Set(clues.map((c) => c.displayKey));
-      questionMarks = generateQuestionMarks(solution, width, height, cfg.questionMarkCount, allClueKeys);
-    }
-
-    lastSolution = solution;
-    lastClues = clues;
-    lastShape = shape;
-
+    // Find cascade opening
     const zeroCell = solution[startRow][startCol] === 0
       ? { row: startRow, col: startCol }
       : findZeroCell(solution, width, height);
@@ -523,12 +580,10 @@ export function generateHexMine(
 
     const cascadedGrid = simulateCascade(solution, zeroCell, width, height);
 
-    // Apply disabled cells to cascaded grid
+    // Apply disabled cells
     for (let r = 0; r < height; r++) {
       for (let c = 0; c < width; c++) {
-        if (!shape[r][c]) {
-          cascadedGrid[r][c] = 'disabled';
-        }
+        if (!shape[r][c]) cascadedGrid[r][c] = 'disabled';
       }
     }
 
@@ -539,80 +594,79 @@ export function generateHexMine(
       }
     }
 
-    const activeCells = totalCells - clues.filter((c) => c.type === 'line').length;
-    if (revealedCount < activeCells * 0.15) continue;
+    const activeCells = totalCells - allClues.filter((c) => c.type === 'line').length;
+    if (revealedCount < activeCells * 0.1) continue;
 
-    const cluesForSolver = clues.length > 0 ? clues : undefined;
-    if (solveFromRevealed(cascadedGrid, solution, width, height, cluesForSolver)) {
-      // Use the cascade-revealed grid as the starting state (not all-hidden).
-      // This gives the player a logical foothold AND guarantees first-click safety.
-      const playerGrid: HexMineGrid = cascadedGrid.map((row) => [...row]);
-
-      // Mark disabled cells in player grid
-      for (let r = 0; r < height; r++) {
-        for (let c = 0; c < width; c++) {
-          if (!shape[r][c]) {
-            playerGrid[r][c] = 'disabled';
-          }
-        }
-      }
-
-      const hasDisabled = shape.some((row) => row.some((v) => !v));
-
-      const hasClueData = clues.length > 0 || questionMarks.size > 0;
-      const finalClues: HexMineClues = hasClueData
-        ? { clues, questionMarks: [...questionMarks] }
-        : null;
-      const finalShape = hasDisabled ? shape : null;
-
-      // Post-generation integrity check (pass clue array, not wrapper)
-      const integrityErrors = validatePuzzleIntegrity(
-        playerGrid, solution, clues.length > 0 ? clues : null, finalShape, width, height,
-      );
-      if (integrityErrors.length > 0) {
-        console.warn('[HexMine] Integrity errors — retrying:', integrityErrors);
-        continue;
-      }
-
-      return {
-        grid: playerGrid,
-        solution,
-        clues: finalClues,
-        emptyCell: 'hidden' as HexMineCell,
-        width,
-        height,
-        ...(finalShape ? { shape: finalShape } : {}),
-      };
+    // ── Phase 2: Verify solvable with all clues ──
+    const allCluesForSolver = allClues.length > 0 ? allClues : undefined;
+    if (!solveFromRevealed(cascadedGrid, solution, width, height, allCluesForSolver)) {
+      continue; // not solvable even with all clues — bad mine layout
     }
-  }
 
-  // Fallback — still try to provide a cascade opening
-  const solution = lastSolution ?? createSolution(width, height, mineCount, new Set());
-  const fallbackZero = findZeroCell(solution, width, height);
-  const playerGrid: HexMineGrid = fallbackZero
-    ? simulateCascade(solution, fallbackZero, width, height)
-    : Array.from({ length: height }, () => Array.from<HexMineCell>({ length: width }).fill('hidden'));
+    // ── Phase 3: Iteratively prune clues (Hexcells-style) ──
+    const prunedClues = difficulty === 'easy'
+      ? [] // easy has no clues
+      : pruneClues(allClues, cascadedGrid, solution, width, height, cfg);
 
-  if (lastShape) {
+    // ── Phase 4: Generate question marks ──
+    let questionMarks: Set<string> = new Set();
+    if (cfg.minQuestionMarks > 0 && difficulty !== 'easy') {
+      const allClueKeys = new Set(prunedClues.map((c) => c.displayKey));
+      questionMarks = generateQuestionMarks(solution, width, height, cfg.minQuestionMarks, allClueKeys);
+    }
+
+    // ── Phase 5: Build final puzzle ──
+    const playerGrid: HexMineGrid = cascadedGrid.map((row) => [...row]);
     for (let r = 0; r < height; r++) {
       for (let c = 0; c < width; c++) {
-        if (!lastShape[r][c]) {
-          playerGrid[r][c] = 'disabled';
-        }
+        if (!shape[r][c]) playerGrid[r][c] = 'disabled';
       }
     }
+
+    const hasDisabled = shape.some((row) => row.some((v) => !v));
+    const hasClueData = prunedClues.length > 0 || questionMarks.size > 0;
+    const finalClues: HexMineClues = hasClueData
+      ? { clues: prunedClues, questionMarks: [...questionMarks] }
+      : null;
+    const finalShape = hasDisabled ? shape : null;
+
+    // Post-generation integrity check
+    const integrityErrors = validatePuzzleIntegrity(
+      playerGrid, solution, prunedClues.length > 0 ? prunedClues : null, finalShape, width, height,
+    );
+    if (integrityErrors.length > 0) {
+      console.warn('[HexMine] Integrity errors — retrying:', integrityErrors);
+      continue;
+    }
+
+    lastSolution = solution;
+    lastClues = prunedClues;
+    lastShape = shape;
+
+    return {
+      grid: playerGrid,
+      solution,
+      clues: finalClues,
+      emptyCell: 'hidden' as HexMineCell,
+      width,
+      height,
+      ...(finalShape ? { shape: finalShape } : {}),
+    };
   }
 
-  const hasDisabled = lastShape?.some((row) => row.some((v) => !v)) ?? false;
+  // Fallback — generate a basic puzzle without clues
+  const fbSolution = createSolution(width, height, mineCount, new Set());
+  const fbZero = findZeroCell(fbSolution, width, height);
+  const fbGrid: HexMineGrid = fbZero
+    ? simulateCascade(fbSolution, fbZero, width, height)
+    : Array.from({ length: height }, () => Array.from<HexMineCell>({ length: width }).fill('hidden'));
 
-  const hasClueData = (lastClues && lastClues.length > 0);
   return {
-    grid: playerGrid,
-    solution,
-    clues: hasClueData ? { clues: lastClues!, questionMarks: [] } : null,
+    grid: fbGrid,
+    solution: fbSolution,
+    clues: null,
     emptyCell: 'hidden' as HexMineCell,
     width,
     height,
-    ...(hasDisabled && lastShape ? { shape: lastShape } : {}),
   };
 }
