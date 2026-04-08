@@ -94,3 +94,72 @@ export function verticesToPointsString(vertices: Array<{ x: number; y: number }>
 export function coordKey(row: number, col: number): string {
   return `${row},${col}`;
 }
+
+/**
+ * Get 6 neighbors in clockwise order (E, NE, NW, W, SW, SE).
+ * Returns null for out-of-bounds neighbors, preserving the ring structure
+ * needed for circular contiguity checks on adjacent clues.
+ */
+export function getNeighborsClockwise(
+  row: number,
+  col: number,
+  width: number,
+  height: number,
+): (OffsetCoord | null)[] {
+  const { q, r } = offsetToAxial(row, col);
+  return AXIAL_DIRECTIONS.map((d) => {
+    const off = axialToOffset(q + d.q, r + d.r);
+    if (off.row < 0 || off.row >= height || off.col < 0 || off.col >= width) return null;
+    return off;
+  });
+}
+
+/**
+ * Trace a ray from a starting cell in one of 6 directions.
+ * Returns cells along the ray EXCLUDING the origin, stopping at grid boundary.
+ */
+export function getLineCells(
+  row: number,
+  col: number,
+  directionIndex: number,
+  width: number,
+  height: number,
+): OffsetCoord[] {
+  const result: OffsetCoord[] = [];
+  const { q, r } = offsetToAxial(row, col);
+  const d = AXIAL_DIRECTIONS[directionIndex];
+  let cq = q + d.q;
+  let cr = r + d.r;
+  while (true) {
+    const off = axialToOffset(cq, cr);
+    if (off.row < 0 || off.row >= height || off.col < 0 || off.col >= width) break;
+    result.push(off);
+    cq += d.q;
+    cr += d.r;
+  }
+  return result;
+}
+
+/**
+ * Get all cells within axial distance `radius` of center, excluding center.
+ */
+export function getCellsInRange(
+  row: number,
+  col: number,
+  radius: number,
+  width: number,
+  height: number,
+): OffsetCoord[] {
+  const center = offsetToAxial(row, col);
+  const result: OffsetCoord[] = [];
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (r === row && c === col) continue;
+      const ax = offsetToAxial(r, c);
+      if (axialDistance(center, ax) <= radius) {
+        result.push({ row: r, col: c });
+      }
+    }
+  }
+  return result;
+}

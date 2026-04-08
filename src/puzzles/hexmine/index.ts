@@ -12,7 +12,7 @@ export const hexmineDefinition: PuzzleDefinition<HexMineGrid, HexMineClues, HexM
   icon: '⬡',
   description: 'Reveal cells on a hex grid — avoid the mines',
 
-  cellValues: ['hidden', 'flagged', 'mine', 'exploded', 0, 1, 2, 3, 4, 5, 6],
+  cellValues: ['hidden', 'flagged', 'mine', 'exploded', 'disabled', 0, 1, 2, 3, 4, 5, 6],
   emptyCell: 'hidden',
   clueLayout: 'none',
 

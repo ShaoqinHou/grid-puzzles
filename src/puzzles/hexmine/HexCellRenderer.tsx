@@ -1,4 +1,4 @@
-import type { HexMineCell } from './types';
+import type { HexMineCell, ClueSpecial } from './types';
 
 /** Classic minesweeper number colors (dark-theme adapted) */
 const NUM_COLORS: Record<number, string> = {
@@ -10,6 +10,40 @@ const NUM_COLORS: Record<number, string> = {
   6: 'var(--color-hex-num-6)',
 };
 
+/** Direction-to-rotation mapping for line clue text (degrees) */
+const LINE_ROTATIONS: Record<number, number> = {
+  0: 0,     // E
+  1: -60,   // NE
+  2: -90,   // NW (vertical)
+  3: 180,   // W
+  4: 120,   // SW
+  5: 90,    // SE (vertical)
+};
+
+/** Format clue text with special condition markers */
+function formatClueText(count: number, special: ClueSpecial, type: string): string {
+  if (type === 'range') return `(${count})`;
+  if (special === 'contiguous') return `{${count}}`;
+  if (special === 'nonContiguous') return `-${count}-`;
+  return `${count}`;
+}
+
+/** Get text color for clue based on type and special */
+function getClueColor(type: string, special: ClueSpecial, numColor?: string): string {
+  if (type === 'line') return 'var(--color-hex-clue-line)';
+  if (type === 'range') return 'var(--color-hex-clue-range)';
+  if (special === 'contiguous') return 'var(--color-hex-bracket-contiguous)';
+  if (special === 'nonContiguous') return 'var(--color-hex-bracket-noncontiguous)';
+  return numColor ?? 'var(--color-text-primary)';
+}
+
+export interface ClueDisplayInfo {
+  readonly type: 'adjacent' | 'line' | 'range' | 'edge-header';
+  readonly special: ClueSpecial;
+  readonly mineCount: number;
+  readonly direction?: number;
+}
+
 export interface HexCellProps {
   readonly cell: HexMineCell;
   readonly points: string;
@@ -18,6 +52,8 @@ export interface HexCellProps {
   readonly size: number;
   readonly isHover: boolean;
   readonly isHinted: boolean;
+  readonly clueInfo?: ClueDisplayInfo;
+  readonly isQuestionMark?: boolean;
   readonly onMouseDown: (e: React.MouseEvent) => void;
   readonly onContextMenu: (e: React.MouseEvent) => void;
   readonly onMouseEnter: () => void;
@@ -32,6 +68,8 @@ export function HexCellRenderer({
   size,
   isHover,
   isHinted,
+  clueInfo,
+  isQuestionMark,
   onMouseDown,
   onContextMenu,
   onMouseEnter,
@@ -92,26 +130,119 @@ export function HexCellRenderer({
         ✦
       </text>
     );
+  } else if (cell === 'disabled') {
+    fill = 'var(--color-hex-disabled)';
+    stroke = 'var(--color-hex-disabled-stroke)';
+    // Render line clue text if clue info exists
+    if (clueInfo) {
+      const text = formatClueText(clueInfo.mineCount, clueInfo.special, clueInfo.type);
+      const rotation = clueInfo.direction !== undefined
+        ? LINE_ROTATIONS[clueInfo.direction] ?? 0
+        : 0;
+      content = (
+        <text
+          x={cx}
+          y={cy}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={fontSize * 0.75}
+          fontWeight="bold"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          fill="var(--color-hex-clue-line)"
+          transform={`rotate(${rotation}, ${cx}, ${cy})`}
+          style={{ pointerEvents: 'none' }}
+        >
+          {text}
+        </text>
+      );
+    }
   } else if (cell === 0) {
     fill = 'var(--color-hex-revealed-0)';
+    // Even 0-cells can be question marks
+    if (isQuestionMark) {
+      content = (
+        <text
+          x={cx} y={cy}
+          textAnchor="middle" dominantBaseline="central"
+          fontSize={fontSize} fontWeight="bold"
+          fill="var(--color-text-tertiary)"
+          style={{ pointerEvents: 'none' }}
+        >
+          ?
+        </text>
+      );
+    }
   } else {
     // Number 1-6
     fill = 'var(--color-hex-revealed)';
-    content = (
-      <text
-        x={cx}
-        y={cy}
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontSize={fontSize}
-        fontWeight="bold"
-        fontFamily="system-ui, -apple-system, sans-serif"
-        fill={NUM_COLORS[cell] ?? 'var(--color-text-primary)'}
-        style={{ pointerEvents: 'none' }}
-      >
-        {cell}
-      </text>
-    );
+    const numCell = cell as number;
+
+    // Question mark — show ? instead of number
+    if (isQuestionMark) {
+      content = (
+        <text
+          x={cx} y={cy}
+          textAnchor="middle" dominantBaseline="central"
+          fontSize={fontSize} fontWeight="bold"
+          fill="var(--color-text-tertiary)"
+          style={{ pointerEvents: 'none' }}
+        >
+          ?
+        </text>
+      );
+    // Check if this cell has a clue annotation (adjacent with special, or range)
+    } else if (clueInfo && clueInfo.special !== 'none') {
+      const text = formatClueText(numCell, clueInfo.special, clueInfo.type);
+      const color = getClueColor(clueInfo.type, clueInfo.special, NUM_COLORS[numCell]);
+      content = (
+        <text
+          x={cx}
+          y={cy}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={fontSize * 0.65}
+          fontWeight="bold"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          fill={color}
+          style={{ pointerEvents: 'none' }}
+        >
+          {text}
+        </text>
+      );
+    } else if (clueInfo?.type === 'range') {
+      const text = formatClueText(clueInfo.mineCount, 'none', 'range');
+      content = (
+        <text
+          x={cx}
+          y={cy}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={fontSize * 0.65}
+          fontWeight="bold"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          fill="var(--color-hex-clue-range)"
+          style={{ pointerEvents: 'none' }}
+        >
+          {text}
+        </text>
+      );
+    } else {
+      content = (
+        <text
+          x={cx}
+          y={cy}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={fontSize}
+          fontWeight="bold"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          fill={NUM_COLORS[numCell] ?? 'var(--color-text-primary)'}
+          style={{ pointerEvents: 'none' }}
+        >
+          {numCell}
+        </text>
+      );
+    }
   }
 
   if (isHinted) {

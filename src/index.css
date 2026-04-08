@@ -46,6 +46,13 @@
   --color-hex-num-4: #818cf8;
   --color-hex-num-5: #f59e0b;
   --color-hex-num-6: #06b6d4;
+  /* HexMine advanced clue visuals */
+  --color-hex-disabled: #1a1a30;
+  --color-hex-disabled-stroke: #5a5a7a;
+  --color-hex-clue-line: #c084fc;
+  --color-hex-clue-range: #22d3ee;
+  --color-hex-bracket-contiguous: #fbbf24;
+  --color-hex-bracket-noncontiguous: #fb923c;
 }
 
 body {

@@ -1015,13 +1015,13 @@ def click_hex_cell(page: Page, r: int, c: int, button: int = 0):
 
 
 def find_safe_hex_cell(page: Page) -> tuple:
-    """Find a hidden cell that is safe (not a mine) from localStorage state."""
+    """Find a hidden cell that is safe (not a mine or disabled) from localStorage state."""
     state = get_state(page)
     solution = state.get('solution', [])
     grid = state.get('grid', [])
     for r, row in enumerate(solution):
         for c, cell in enumerate(row):
-            if cell != 'mine' and r < len(grid) and c < len(grid[r]) and grid[r][c] == 'hidden':
+            if cell not in ('mine', 'disabled') and r < len(grid) and c < len(grid[r]) and grid[r][c] == 'hidden':
                 return (r, c)
     return None
 
@@ -1039,13 +1039,13 @@ def find_mine_hex_cell(page: Page) -> tuple:
 
 
 def auto_solve_hexmine(page: Page):
-    """Reveal all non-mine cells to win a hexmine game."""
+    """Reveal all non-mine, non-disabled cells to win a hexmine game."""
     state = get_state(page)
     solution = state.get('solution', [])
     grid = state.get('grid', [])
     for r, row in enumerate(solution):
         for c, cell in enumerate(row):
-            if cell != 'mine' and r < len(grid) and c < len(grid[r]) and grid[r][c] == 'hidden':
+            if cell not in ('mine', 'disabled') and r < len(grid) and c < len(grid[r]) and grid[r][c] == 'hidden':
                 click_hex_cell(page, r, c, button=0)
     time.sleep(0.5)
 
@@ -1211,6 +1211,154 @@ def test_hexmine(page: Page):
 
 
 # ═══════════════════════════════════════════
+# GROUP 14: HexMine Advanced Clues
+# ═══════════════════════════════════════════
+
+def start_difficulty_hexmine(page: Page, difficulty: str):
+    """Start a hexmine game at specified difficulty."""
+    page.click('button:has-text("New Game")')
+    time.sleep(0.3)
+    diff_btn = page.locator(f'button:has-text("{difficulty}")')
+    if diff_btn.count() > 0:
+        diff_btn.first.click()
+        time.sleep(0.2)
+    page.locator('button:has-text("Hex Minesweeper")').click()
+    time.sleep(0.8)
+
+
+def test_hexmine_advanced_clues(page: Page):
+    print("\n── Group 14: HexMine Advanced Clues ──")
+
+    clear_storage(page)
+    page.reload()
+    page.wait_for_load_state("networkidle")
+    time.sleep(0.5)
+
+    # 1. Easy generates null clues (Phase 1 compatibility)
+    start_easy_hexmine(page)
+    state = get_state(page)
+    check("Easy — null clues", state.get('clues') is None)
+    check("Easy — no shape", state.get('shape') is None)
+
+    # 2. Medium generates clues
+    start_difficulty_hexmine(page, "Medium")
+    state = get_state(page)
+    clue_data = state.get('clues')
+    # clues is now { clues: [...], questionMarks: [...] } or null
+    clues = clue_data.get('clues', []) if isinstance(clue_data, dict) else clue_data
+    check("Medium — clues is non-null with entries",
+          clues is not None and isinstance(clues, list) and len(clues) > 0)
+
+    # 3. Medium clues have special conditions
+    if clues:
+        has_special = any(c.get('special') != 'none' for c in clues)
+        check("Medium — at least one clue with special condition", has_special)
+
+        # 4. Adjacent clues present
+        has_adjacent = any(c.get('type') == 'adjacent' for c in clues)
+        check("Medium — has adjacent clues", has_adjacent)
+
+        # 5. Clue mine counts are correct
+        solution = state.get('solution', [])
+        all_correct = True
+        for clue in clues:
+            if clue.get('type') != 'adjacent':
+                continue
+            actual_mines = sum(
+                1 for key in clue.get('cellKeys', [])
+                if key and solution[int(key.split(',')[0])][int(key.split(',')[1])] == 'mine'
+            )
+            if actual_mines != clue.get('mineCount'):
+                all_correct = False
+                break
+        check("Medium — adjacent clue counts correct", all_correct)
+    else:
+        check("Medium — at least one clue with special condition", False)
+        check("Medium — has adjacent clues", False)
+        check("Medium — adjacent clue counts correct", False)
+
+    # 6. Medium game still solvable — auto-solve
+    auto_solve_hexmine(page)
+    time.sleep(0.5)
+    state = get_state(page)
+    check("Medium — win after auto-solve", state.get('solved') == True)
+
+    # 7. Hard generates line clues
+    start_difficulty_hexmine(page, "Hard")
+    state = get_state(page)
+    clue_data = state.get('clues')
+    clues = clue_data.get('clues', []) if isinstance(clue_data, dict) else clue_data
+    has_line = clues is not None and any(c.get('type') == 'line' for c in clues)
+    check("Hard — has line clues", has_line)
+
+    # 8. Line origin cell is disabled
+    if has_line:
+        line_clue = next(c for c in clues if c.get('type') == 'line')
+        dk = line_clue.get('displayKey', '')
+        parts = dk.split(',')
+        if len(parts) == 2:
+            dr, dc = int(parts[0]), int(parts[1])
+            grid = state.get('grid', [])
+            check("Hard — line origin is disabled", grid[dr][dc] == 'disabled')
+        else:
+            check("Hard — line origin is disabled", False)
+
+        # 9. Line clue has direction
+        check("Hard — line clue has direction", line_clue.get('direction') is not None)
+
+        # 10. Line count correct
+        solution = state.get('solution', [])
+        actual_mines = sum(
+            1 for key in line_clue.get('cellKeys', [])
+            if key and solution[int(key.split(',')[0])][int(key.split(',')[1])] == 'mine'
+        )
+        check("Hard — line clue count correct", actual_mines == line_clue.get('mineCount'))
+    else:
+        check("Hard — line origin is disabled", False)
+        check("Hard — line clue has direction", False)
+        check("Hard — line clue count correct", False)
+
+    # 11. Hard has shape with false entries
+    shape = state.get('shape')
+    has_disabled = shape is not None and any(not v for row in shape for v in row)
+    check("Hard — shape has disabled cells", has_disabled)
+
+    # 12. Line origin not clickable
+    if has_line:
+        dk = line_clue.get('displayKey', '')
+        parts = dk.split(',')
+        dr, dc = int(parts[0]), int(parts[1])
+        state_before = get_state(page)
+        click_hex_cell(page, dr, dc, button=0)
+        state_after = get_state(page)
+        check("Hard — disabled cell click does nothing",
+              state_before.get('grid') == state_after.get('grid'))
+
+    # 13. Expert generates range clues
+    start_difficulty_hexmine(page, "Expert")
+    state = get_state(page)
+    clue_data = state.get('clues')
+    clues = clue_data.get('clues', []) if isinstance(clue_data, dict) else clue_data
+    has_range = clues is not None and any(c.get('type') == 'range' for c in clues)
+    check("Expert — has range clues", has_range)
+
+    # 14. Clues persist across reload
+    state_before = get_state(page)
+    page.reload()
+    page.wait_for_load_state("networkidle")
+    time.sleep(0.5)
+    state_after = get_state(page)
+    check("Expert — clues persist across reload",
+          state_before.get('clues') == state_after.get('clues'))
+
+    # 15. Expert game winnable
+    auto_solve_hexmine(page)
+    time.sleep(0.5)
+    state = get_state(page)
+    check("Expert — win after auto-solve", state.get('solved') == True)
+
+
+# ═══════════════════════════════════════════
 # RUNNER
 # ═══════════════════════════════════════════
 
@@ -1250,6 +1398,7 @@ def main():
             test_edge_cases(page)
             test_visual_screenshots(page)
             test_hexmine(page)
+            test_hexmine_advanced_clues(page)
         except Exception as e:
             print(f"\n  CRASH: {e}")
             import traceback

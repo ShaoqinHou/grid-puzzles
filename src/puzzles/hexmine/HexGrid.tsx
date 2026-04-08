@@ -4,7 +4,9 @@ import type { CellCoord } from '@/types';
 import { useGameState } from '@/engine/GameStateProvider';
 import { useGameEvaluation } from '@/engine/GameEvaluatorProvider';
 import { usePreferences } from '@/engine/PreferencesProvider';
-import type { HexMineGrid, HexMineCell } from './types';
+import type { HexMineGrid, HexMineCell, HexMineClueData } from './types';
+import type { ClueDisplayInfo } from './HexCellRenderer';
+import { hexmineClueConfig } from './generate';
 import {
   offsetToAxial,
   axialToPixel,
@@ -14,6 +16,8 @@ import {
   coordKey,
 } from './hex';
 import { HexCellRenderer } from './HexCellRenderer';
+import { HexMineLegend } from './HexMineLegend';
+import { HexMineConfigPanel } from './HexMineConfigPanel';
 
 interface HexGridProps {
   definition: PuzzleDefinition;
@@ -29,15 +33,14 @@ function isGameLost(grid: HexMineGrid): boolean {
   return false;
 }
 
-/** Check if all non-mine cells are revealed (game won) */
+/** Check if all non-mine, non-disabled cells are revealed (game won) */
 function isGameWon(grid: HexMineGrid, solution: HexMineGrid): boolean {
   const height = grid.length;
   const width = height > 0 ? grid[0].length : 0;
   for (let r = 0; r < height; r++) {
     for (let c = 0; c < width; c++) {
-      if (solution[r][c] !== 'mine' && grid[r][c] !== solution[r][c]) {
-        return false;
-      }
+      if (solution[r][c] === 'mine' || solution[r][c] === 'disabled') continue;
+      if (grid[r][c] !== solution[r][c]) return false;
     }
   }
   return true;
@@ -48,6 +51,8 @@ export function HexGrid({ definition }: HexGridProps) {
   const evaluation = useGameEvaluation();
   const { preferences } = usePreferences();
   const [hoverCell, setHoverCell] = useState<string | null>(null);
+  const [showLegend, setShowLegend] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
 
   const grid = state.grid as HexMineGrid;
   const solution = state.solution as HexMineGrid;
@@ -104,6 +109,39 @@ export function HexGrid({ definition }: HexGridProps) {
     };
   }, [width, height, hexSize]);
 
+  // Build clue lookup map + question mark set for rendering
+  const { clueMap, questionMarkSet, edgeHeaders } = useMemo(() => {
+    const clueData = state.clues as HexMineClueData | null;
+    if (!clueData) return {
+      clueMap: new Map<string, ClueDisplayInfo>(),
+      questionMarkSet: new Set<string>(),
+      edgeHeaders: [] as Array<{ x: number; y: number; text: string }>,
+    };
+    const map = new Map<string, ClueDisplayInfo>();
+    const headers: Array<{ x: number; y: number; text: string }> = [];
+    for (const clue of clueData.clues) {
+      if (clue.type === 'edge-header' && clue.edgePosition) {
+        headers.push({
+          x: clue.edgePosition.x * hexSize,
+          y: clue.edgePosition.y * hexSize,
+          text: `${clue.mineCount}`,
+        });
+      } else {
+        map.set(clue.displayKey, {
+          type: clue.type,
+          special: clue.special,
+          mineCount: clue.mineCount,
+          direction: clue.direction,
+        });
+      }
+    }
+    return {
+      clueMap: map,
+      questionMarkSet: new Set(clueData.questionMarks),
+      edgeHeaders: headers,
+    };
+  }, [state.clues, hexSize]);
+
   const gameLost = useMemo(() => isGameLost(grid), [grid]);
 
   // --- Interaction handlers ---
@@ -151,7 +189,7 @@ export function HexGrid({ definition }: HexGridProps) {
     for (let r = 0; r < height; r++) {
       for (let c = 0; c < width; c++) {
         if (r === excludeRow && c === excludeCol) continue;
-        if (solution[r][c] === 'mine' && grid[r][c] !== 'flagged') {
+        if (solution[r][c] === 'mine' && grid[r][c] !== 'flagged' && grid[r][c] !== 'disabled') {
           additional.push({ coord: { row: r, col: c }, value: 'mine' });
         }
       }
@@ -164,6 +202,7 @@ export function HexGrid({ definition }: HexGridProps) {
       if (state.solved || state.paused || gameLost) return;
 
       const cell = grid[row][col];
+      if (cell === 'disabled') return;
 
       if (e.button === 0) {
         // Left click
@@ -189,7 +228,7 @@ export function HexGrid({ definition }: HexGridProps) {
 
           // Safe reveal
           let additional: Array<{ coord: CellCoord; value: unknown }> = [];
-          if (sol === 0) {
+          if (sol === 0 && hexmineClueConfig.cascadeReveal) {
             additional = computeCascade(row, col);
           }
 
@@ -222,7 +261,7 @@ export function HexGrid({ definition }: HexGridProps) {
               additionalCells: additional.length > 0 ? additional : undefined,
             },
           });
-        } else if (typeof cell === 'number' && cell > 0) {
+        } else if (typeof cell === 'number' && cell > 0 && hexmineClueConfig.chordReveal) {
           // CHORD: click on revealed number
           const neighbors = getOffsetNeighbors(row, col, width, height);
           let flagCount = 0;
@@ -317,12 +356,13 @@ export function HexGrid({ definition }: HexGridProps) {
       if (state.solved || state.paused || gameLost) return;
 
       const cell = grid[row][col];
+      if (cell === 'disabled') return;
 
       if (cell === 'hidden') {
         // FLAG
         const sol = solution[row][col];
 
-        if (sol !== 'mine') {
+        if (sol !== 'mine' && hexmineClueConfig.loseOnWrongFlag) {
           // Lose on wrong flag
           const mines = revealAllMines(row, col);
           dispatch({
@@ -376,13 +416,39 @@ export function HexGrid({ definition }: HexGridProps) {
 
   return (
     <div className="flex flex-col items-center gap-2 select-none">
-      {/* Mine counter */}
+      {/* Mine counter + legend toggle */}
       <div className="flex items-center gap-4 text-sm text-text-secondary">
         <span>
           <span className="text-hex-flagged">⚑</span> {mineCount.remaining} / {mineCount.total}
         </span>
         <span>{Math.round(evaluation.progress * 100)}%</span>
+        <button
+          type="button"
+          onClick={() => { setShowLegend((v) => !v); setShowConfig(false); }}
+          className="text-xs px-2 py-0.5 rounded bg-bg-tertiary hover:bg-accent-hover text-text-secondary hover:text-white transition-colors"
+          title="How to Play"
+        >
+          ?
+        </button>
+        <button
+          type="button"
+          onClick={() => { setShowConfig((v) => !v); setShowLegend(false); }}
+          className="text-xs px-2 py-0.5 rounded bg-bg-tertiary hover:bg-accent-hover text-text-secondary hover:text-white transition-colors"
+          title="Generation Config"
+        >
+          ⚙
+        </button>
       </div>
+
+      {/* Legend overlay */}
+      {showLegend && (
+        <HexMineLegend onClose={() => setShowLegend(false)} />
+      )}
+
+      {/* Config panel */}
+      {showConfig && (
+        <HexMineConfigPanel onClose={() => setShowConfig(false)} />
+      )}
 
       {/* SVG Hex Grid */}
       <svg
@@ -405,11 +471,29 @@ export function HexGrid({ definition }: HexGridProps) {
               state.hintCell.row === c.row &&
               state.hintCell.col === c.col
             }
+            clueInfo={clueMap.get(c.key)}
+            isQuestionMark={questionMarkSet.has(c.key)}
             onMouseDown={(e) => handleCellClick(c.row, c.col, e)}
             onContextMenu={(e) => handleContextMenu(c.row, c.col, e)}
             onMouseEnter={() => setHoverCell(c.key)}
             onMouseLeave={() => setHoverCell(null)}
           />
+        ))}
+        {/* Edge headers */}
+        {edgeHeaders.map((h, i) => (
+          <text
+            key={`edge-${i}`}
+            x={h.x}
+            y={h.y}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={hexSize * 0.55}
+            fontWeight="bold"
+            fill="var(--color-text-secondary)"
+            style={{ pointerEvents: 'none' }}
+          >
+            {h.text}
+          </text>
         ))}
       </svg>
 
