@@ -5,6 +5,7 @@ import { getOffsetNeighbors, getNeighborsClockwise, getLineCells, getCellsInRang
 import { solveFromRevealed } from './solve';
 import { validatePuzzleIntegrity } from './validate';
 import { createSeededRandom } from './seededRandom';
+import { simulateCascade } from './solver';
 
 /** Current random function — replaced with seeded version during generation */
 let rng: () => number = Math.random;
@@ -126,42 +127,7 @@ function findZeroCell(solution: HexMineGrid, width: number, height: number): { r
   return candidates[Math.floor(rng() * candidates.length)];
 }
 
-function simulateCascade(
-  solution: HexMineGrid,
-  start: { row: number; col: number },
-  width: number,
-  height: number,
-): HexMineGrid {
-  const grid: HexMineGrid = Array.from({ length: height }, () =>
-    Array.from<HexMineCell>({ length: width }).fill('hidden'),
-  );
-
-  const stack: Array<{ row: number; col: number }> = [start];
-  const visited = new Set<string>();
-  visited.add(coordKey(start.row, start.col));
-
-  while (stack.length > 0) {
-    const { row, col } = stack.pop()!;
-    const sol = solution[row][col];
-
-    if (sol === 'mine' || sol === 'disabled') continue;
-
-    grid[row][col] = sol;
-
-    if (sol === 0) {
-      const neighbors = getOffsetNeighbors(row, col, width, height);
-      for (const n of neighbors) {
-        const key = coordKey(n.row, n.col);
-        if (!visited.has(key)) {
-          visited.add(key);
-          stack.push(n);
-        }
-      }
-    }
-  }
-
-  return grid;
-}
+// simulateCascade imported from './solver'
 
 // ── Clue generation ──
 
