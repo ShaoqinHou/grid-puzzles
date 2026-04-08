@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PuzzleDefinition } from '@/engine/puzzleTypes';
 import type { CellCoord } from '@/types';
 import { useGameState } from '@/engine/GameStateProvider';
@@ -157,12 +157,15 @@ export function HexGrid({ definition }: HexGridProps) {
 
   const gameLost = useMemo(() => isGameLost(grid), [grid]);
 
-  // Auto-resume if undo removes the loss state (undoing a mine hit)
+  // Auto-resume if undo removes the loss state (undoing a mine hit).
+  // Only triggers when gameLost transitions from true to false.
+  const prevGameLost = useRef(gameLost);
   useEffect(() => {
-    if (state.paused && !state.solved && !gameLost) {
+    if (prevGameLost.current && !gameLost && state.paused && !state.solved) {
       dispatch({ type: 'RESUME' });
     }
-  }, [state.paused, state.solved, gameLost, dispatch]);
+    prevGameLost.current = gameLost;
+  }, [gameLost, state.paused, state.solved, dispatch]);
 
   // --- Interaction handlers ---
 

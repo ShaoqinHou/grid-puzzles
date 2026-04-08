@@ -535,9 +535,9 @@ export function generateHexMine(
 
     const cluesForSolver = clues.length > 0 ? clues : undefined;
     if (solveFromRevealed(cascadedGrid, solution, width, height, cluesForSolver)) {
-      const playerGrid: HexMineGrid = Array.from({ length: height }, () =>
-        Array.from<HexMineCell>({ length: width }).fill('hidden'),
-      );
+      // Use the cascade-revealed grid as the starting state (not all-hidden).
+      // This gives the player a logical foothold AND guarantees first-click safety.
+      const playerGrid: HexMineGrid = cascadedGrid.map((row) => [...row]);
 
       // Mark disabled cells in player grid
       for (let r = 0; r < height; r++) {
@@ -577,11 +577,12 @@ export function generateHexMine(
     }
   }
 
-  // Fallback
+  // Fallback — still try to provide a cascade opening
   const solution = lastSolution ?? createSolution(width, height, mineCount, new Set());
-  const playerGrid: HexMineGrid = Array.from({ length: height }, () =>
-    Array.from<HexMineCell>({ length: width }).fill('hidden'),
-  );
+  const fallbackZero = findZeroCell(solution, width, height);
+  const playerGrid: HexMineGrid = fallbackZero
+    ? simulateCascade(solution, fallbackZero, width, height)
+    : Array.from({ length: height }, () => Array.from<HexMineCell>({ length: width }).fill('hidden'));
 
   if (lastShape) {
     for (let r = 0; r < height; r++) {

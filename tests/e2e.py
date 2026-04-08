@@ -980,7 +980,7 @@ def start_easy_hexmine(page: Page):
         easy_btn.first.click()
         time.sleep(0.2)
     page.locator('button:has-text("Hex Minesweeper")').click()
-    time.sleep(0.5)
+    time.sleep(1.0)  # Wait for generation + render + state persistence
 
 
 def click_hex_cell(page: Page, r: int, c: int, button: int = 0):
@@ -988,9 +988,8 @@ def click_hex_cell(page: Page, r: int, c: int, button: int = 0):
     page.evaluate('''([r, c, btn]) => {
         const svg = document.querySelector('svg');
         if (!svg) return;
-        const groups = svg.querySelectorAll('g');
-        const width = parseInt(document.querySelector('svg').getAttribute('data-width') || '8');
-        // Groups are in row-major order matching layout.cells
+        // Use direct children only to avoid nested animation <g> wrappers
+        const groups = Array.from(svg.children).filter(el => el.tagName === 'g');
         const state = JSON.parse(localStorage.getItem("grid-puzzles:game") || "{}");
         const w = state.width || 8;
         const idx = r * w + c;
@@ -1040,7 +1039,11 @@ def find_mine_hex_cell(page: Page) -> tuple:
 
 def auto_solve_hexmine(page: Page):
     """Reveal all non-mine, non-disabled cells to win a hexmine game."""
+    time.sleep(0.3)  # Wait for state to settle after new game
     state = get_state(page)
+    # Verify we have a fresh, active game
+    if state.get('paused') or state.get('solved'):
+        return
     solution = state.get('solution', [])
     grid = state.get('grid', [])
     for r, row in enumerate(solution):
@@ -1063,8 +1066,11 @@ def test_hexmine(page: Page):
     state = get_state(page)
     check("Hexmine — puzzleType is hexmine", state.get('puzzleType') == 'hexmine')
     check("Hexmine — grid is 8x8", state.get('width') == 8 and state.get('height') == 8)
-    check("Hexmine — all cells start hidden",
-          all(cell == 'hidden' for row in state.get('grid', []) for cell in row))
+    # Games now start with a pre-revealed cascade opening (not all hidden)
+    hidden_count = sum(1 for row in state.get('grid', []) for cell in row if cell == 'hidden')
+    revealed_count = sum(1 for row in state.get('grid', []) for cell in row if isinstance(cell, int))
+    check("Hexmine — has pre-revealed opening", revealed_count > 0)
+    check("Hexmine — has hidden cells remaining", hidden_count > 0)
     check("Hexmine — solution has mines",
           any(cell == 'mine' for row in state.get('solution', []) for cell in row))
 
@@ -1223,7 +1229,7 @@ def start_difficulty_hexmine(page: Page, difficulty: str):
         diff_btn.first.click()
         time.sleep(0.2)
     page.locator('button:has-text("Hex Minesweeper")').click()
-    time.sleep(0.8)
+    time.sleep(1.0)
 
 
 def test_hexmine_advanced_clues(page: Page):
