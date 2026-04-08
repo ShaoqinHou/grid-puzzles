@@ -1,3 +1,4 @@
+import { useRef, useCallback } from 'react';
 import type { HexMineCell, ClueSpecial } from './types';
 
 /** Classic minesweeper number colors (dark-theme adapted) */
@@ -58,6 +59,8 @@ export interface HexCellProps {
   readonly onContextMenu: (e: React.MouseEvent) => void;
   readonly onMouseEnter: () => void;
   readonly onMouseLeave: () => void;
+  readonly onTap?: () => void;
+  readonly onLongPress?: () => void;
 }
 
 export function HexCellRenderer({
@@ -74,8 +77,38 @@ export function HexCellRenderer({
   onContextMenu,
   onMouseEnter,
   onMouseLeave,
+  onTap,
+  onLongPress,
 }: HexCellProps) {
   const fontSize = size * 0.7;
+
+  // Touch: long-press detection
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchMoved = useRef(false);
+
+  const handleTouchStart = useCallback(() => {
+    touchMoved.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressTimer.current = null;
+      onLongPress?.();
+    }, 500);
+  }, [onLongPress]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+      if (!touchMoved.current) onTap?.();
+    }
+  }, [onTap]);
+
+  const handleTouchMove = useCallback(() => {
+    touchMoved.current = true;
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
   const iconSize = size * 0.55;
 
   let fill: string;
@@ -95,7 +128,7 @@ export function HexCellRenderer({
         dominantBaseline="central"
         fontSize={iconSize}
         fill="var(--color-hex-flagged)"
-        style={{ pointerEvents: 'none' }}
+        style={{ pointerEvents: 'none', animation: 'hexFlagBounce 0.25s ease-out' }}
       >
         ⚑
       </text>
@@ -236,21 +269,52 @@ export function HexCellRenderer({
     strokeWidth = 2.5;
   }
 
+  // Determine if this cell was recently revealed (for animation)
+  const isRevealed = typeof cell === 'number' || cell === 'mine' || cell === 'exploded';
+  const isInteractive = cell === 'hidden' || cell === 'flagged';
+
   return (
     <g
       onMouseDown={onMouseDown}
       onContextMenu={onContextMenu}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      style={{ cursor: cell === 'hidden' || cell === 'flagged' ? 'pointer' : 'default' }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchMove}
+      style={{
+        cursor: isInteractive ? 'pointer' : 'default',
+        transition: 'opacity 0.15s ease-out',
+      }}
     >
       <polygon
         points={points}
         fill={fill}
         stroke={stroke}
         strokeWidth={strokeWidth}
+        style={{
+          transition: 'fill 0.2s ease-out, stroke 0.15s ease-out, stroke-width 0.15s ease-out',
+          filter: isHover && isInteractive ? 'brightness(1.15)' : undefined,
+        }}
       />
-      {content}
+      {isRevealed && content && (
+        <g style={{ animation: 'hexReveal 0.25s ease-out' }}>
+          {content}
+        </g>
+      )}
+      {!isRevealed && content}
+      {cell === 'exploded' && (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={size * 0.8}
+          fill="none"
+          stroke="var(--color-hex-mine-exploded)"
+          strokeWidth={1.5}
+          opacity={0.6}
+          style={{ animation: 'hexShockwave 0.4s ease-out forwards' }}
+        />
+      )}
     </g>
   );
 }

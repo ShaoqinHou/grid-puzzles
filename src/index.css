@@ -65,3 +65,20 @@ body {
 #root {
   min-height: 100vh;
 }
+
+/* HexMine cell animations */
+@keyframes hexReveal {
+  0% { opacity: 0; transform: scale(0.7); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes hexShockwave {
+  0% { r: 0; opacity: 0.8; stroke-width: 3; }
+  100% { r: 30; opacity: 0; stroke-width: 0.5; }
+}
+
+@keyframes hexFlagBounce {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}

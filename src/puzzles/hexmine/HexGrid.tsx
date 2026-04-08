@@ -474,7 +474,7 @@ export function HexGrid({ definition }: HexGridProps) {
       <svg
         viewBox={`${layout.viewBox.x} ${layout.viewBox.y} ${layout.viewBox.width} ${layout.viewBox.height}`}
         width="100%"
-        style={{ maxWidth: Math.min(600, layout.viewBox.width * 1.2), maxHeight: '70vh' }}
+        style={{ maxWidth: Math.min(600, layout.viewBox.width * 1.2), maxHeight: '70vh', touchAction: 'manipulation' }}
         preserveAspectRatio="xMidYMid meet"
       >
         {layout.cells.map((c) => (
@@ -497,6 +497,8 @@ export function HexGrid({ definition }: HexGridProps) {
             onContextMenu={(e) => handleContextMenu(c.row, c.col, e)}
             onMouseEnter={() => setHoverCell(c.key)}
             onMouseLeave={() => setHoverCell(null)}
+            onTap={() => handleCellClick(c.row, c.col, { button: 0 } as React.MouseEvent)}
+            onLongPress={() => handleContextMenu(c.row, c.col, { preventDefault: () => {} } as React.MouseEvent)}
           />
         ))}
         {/* Edge headers */}
