@@ -4,6 +4,10 @@ import type { HexMineCell, HexMineGrid, HexMineClues, HexMineExplicitClue, ClueS
 import { getOffsetNeighbors, getNeighborsClockwise, getLineCells, getCellsInRange, coordKey, offsetToAxial, axialToPixel } from './hex';
 import { solveFromRevealed } from './solve';
 import { validatePuzzleIntegrity } from './validate';
+import { createSeededRandom } from './seededRandom';
+
+/** Current random function — replaced with seeded version during generation */
+let rng: () => number = Math.random;
 
 interface DifficultyConfig {
   readonly width: number;
@@ -47,11 +51,13 @@ export const hexmineClueConfig = {
   rangeCount: 2,
   questionMarkCount: 3,
   edgeHeaderCount: 4,
+  /** Seed for reproducible generation (null = random) */
+  seed: null as number | null,
 };
 
 function shuffle<T>(arr: T[]): T[] {
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rng() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
@@ -112,7 +118,7 @@ function findZeroCell(solution: HexMineGrid, width: number, height: number): { r
     }
   }
   if (candidates.length === 0) return null;
-  return candidates[Math.floor(Math.random() * candidates.length)];
+  return candidates[Math.floor(rng() * candidates.length)];
 }
 
 function simulateCascade(
@@ -446,6 +452,9 @@ export function generateHexMine(
   _requestedHeight: number,
   difficulty: Difficulty,
 ): PuzzleInstance<HexMineGrid, HexMineClues, HexMineCell> {
+  // Set up RNG: seeded if seed is provided, else Math.random
+  const seed = hexmineClueConfig.seed;
+  rng = seed !== null ? createSeededRandom(seed) : Math.random;
   const config = DIFFICULTY_CONFIG[difficulty];
   const { width, height, mineDensity } = config;
   const totalCells = width * height;
@@ -456,8 +465,8 @@ export function generateHexMine(
   let lastShape: GridShape | null = null;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const startRow = Math.floor(Math.random() * height);
-    const startCol = Math.floor(Math.random() * width);
+    const startRow = Math.floor(rng() * height);
+    const startCol = Math.floor(rng() * width);
 
     const safeZone = new Set<string>();
     safeZone.add(coordKey(startRow, startCol));

@@ -18,6 +18,8 @@ import {
 import { HexCellRenderer } from './HexCellRenderer';
 import { HexMineLegend } from './HexMineLegend';
 import { HexMineConfigPanel } from './HexMineConfigPanel';
+import { LevelPackPanel } from './LevelPackPanel';
+import { saveProgress } from './levelPacks';
 
 interface HexGridProps {
   definition: PuzzleDefinition;
@@ -53,6 +55,7 @@ export function HexGrid({ definition }: HexGridProps) {
   const [hoverCell, setHoverCell] = useState<string | null>(null);
   const [showLegend, setShowLegend] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [showLevels, setShowLevels] = useState(false);
   const [hoveredScope, setHoveredScope] = useState<ReadonlySet<string> | null>(null);
 
   const grid = state.grid as HexMineGrid;
@@ -167,6 +170,14 @@ export function HexGrid({ definition }: HexGridProps) {
   }, [state.clues, hexSize]);
 
   const gameLost = useMemo(() => isGameLost(grid), [grid]);
+
+  // Save level progress on win
+  useEffect(() => {
+    if (state.solved && state.id.startsWith('level:')) {
+      const levelId = state.id.slice(6); // strip "level:" prefix
+      saveProgress(levelId, state.elapsedMs);
+    }
+  }, [state.solved, state.id, state.elapsedMs]);
 
   // Auto-resume if undo removes the loss state (undoing a mine hit).
   // Only triggers when gameLost transitions from true to false.
@@ -466,11 +477,19 @@ export function HexGrid({ definition }: HexGridProps) {
         </button>
         <button
           type="button"
-          onClick={() => { setShowConfig((v) => !v); setShowLegend(false); }}
+          onClick={() => { setShowConfig((v) => !v); setShowLegend(false); setShowLevels(false); }}
           className="text-xs px-2 py-0.5 rounded bg-bg-tertiary hover:bg-accent-hover text-text-secondary hover:text-white transition-colors"
           title="Generation Config"
         >
           ⚙
+        </button>
+        <button
+          type="button"
+          onClick={() => { setShowLevels((v) => !v); setShowLegend(false); setShowConfig(false); }}
+          className="text-xs px-2 py-0.5 rounded bg-bg-tertiary hover:bg-accent-hover text-text-secondary hover:text-white transition-colors"
+          title="Level Packs"
+        >
+          ▤
         </button>
       </div>
 
@@ -482,6 +501,11 @@ export function HexGrid({ definition }: HexGridProps) {
       {/* Config panel */}
       {showConfig && (
         <HexMineConfigPanel onClose={() => setShowConfig(false)} />
+      )}
+
+      {/* Level packs */}
+      {showLevels && (
+        <LevelPackPanel onClose={() => setShowLevels(false)} />
       )}
 
       {/* SVG Hex Grid */}
