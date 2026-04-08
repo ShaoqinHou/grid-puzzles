@@ -10,6 +10,7 @@ import { createSeededRandom } from '../seededRandom';
 import { findAdjacentClue, findLineClue, findRangeClue, findEdgeHeaderClue, findFrontierCell } from './clueFactory';
 import { isCellDetermined, hasKnowledgeContradiction } from './verify';
 import { constrainedFill, buildSolutionFromAssignments } from './constrainedFill';
+import { trimShape } from './shapeTrimmer';
 import type { PuzzleBlueprint, PuzzleStep, StepStrategy, CellTarget } from './compilerTypes';
 import { CompilationError } from './compilerTypes';
 
@@ -297,7 +298,10 @@ export function compilePuzzle(
     ? simulateCascade(solution, cascadeStart, width, height)
     : Array.from({ length: height }, () => Array.from<HexMineCell>({ length: width }).fill('hidden'));
 
-  // Apply disabled cells
+  // Trim grid shape (create holes in unused areas)
+  trimShape(solution, playerGrid, accumulatedClues, shape, width, height);
+
+  // Apply disabled cells from trimming + line clue origins
   const hasDisabled = shape.some((row) => row.some((v) => !v));
   if (hasDisabled) {
     for (let r = 0; r < height; r++) {
@@ -309,6 +313,7 @@ export function compilePuzzle(
       }
     }
   }
+  log.push(`Shape trimmed: ${hasDisabled ? shape.flat().filter((v) => !v).length + ' cells disabled' : 'no trimming'}`);
 
   // ── Phase 7: Verify solvability + supplement if needed ──
   let solvable = solveFromRevealed(
