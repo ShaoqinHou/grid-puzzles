@@ -14,16 +14,16 @@ const CLUE_TYPES = [
   { value: 'pre-revealed', label: 'Pre-revealed cell' },
 ] as const;
 
-interface StepDraft {
+export interface StepDraft {
   targetKind: 'auto' | 'coord';
   targetRow: number;
   targetCol: number;
   targetValue: 0 | 1;
-  clueType: string;
+  clueTypes: string[];  // multiple clue types per step
 }
 
 function defaultStep(): StepDraft {
-  return { targetKind: 'auto', targetRow: 0, targetCol: 0, targetValue: 1, clueType: 'adjacent' };
+  return { targetKind: 'auto', targetRow: 0, targetCol: 0, targetValue: 1, clueTypes: ['adjacent'] };
 }
 
 function parseClueType(s: string): { type: string; special?: ClueSpecial } {
@@ -93,21 +93,46 @@ export function BlueprintEditor({ onClose, pickedCell, onStepsChanged }: Bluepri
     setCompiling(true);
 
     try {
-      const blueprintSteps: PuzzleStep[] = steps.map((s, i) => {
-        const { type, special } = parseClueType(s.clueType);
-        const strategy = type === 'pre-revealed'
+      // For multi-clue steps, create one PuzzleStep per clue type
+      // (the compiler processes them in sequence)
+      const blueprintSteps: PuzzleStep[] = [];
+      let stepId = 0;
+      for (let i = 0; i < steps.length; i++) {
+        const s = steps[i];
+        const target = s.targetKind === 'coord'
+          ? { kind: 'coord' as const, row: s.targetRow, col: s.targetCol }
+          : { kind: 'auto' as const };
+
+        // First clue type gets the actual target + value
+        const primaryType = s.clueTypes[0] ?? 'adjacent';
+        const { type: pt, special: ps } = parseClueType(primaryType);
+        const primaryStrategy = pt === 'pre-revealed'
           ? { kind: 'pre-revealed' as const }
-          : { kind: 'clue' as const, type: type as 'adjacent', special };
-        return {
-          id: i,
+          : { kind: 'clue' as const, type: pt as 'adjacent', special: ps };
+
+        blueprintSteps.push({
+          id: stepId++,
           label: `Step ${i + 1}`,
-          target: s.targetKind === 'coord'
-            ? { kind: 'coord' as const, row: s.targetRow, col: s.targetCol }
-            : { kind: 'auto' as const },
+          target,
           targetValue: s.targetValue,
-          requiredStrategy: strategy,
-        };
-      });
+          requiredStrategy: primaryStrategy,
+        });
+
+        // Additional clue types become supplementary steps (auto target, same general area)
+        for (let j = 1; j < s.clueTypes.length; j++) {
+          const { type: st, special: ss } = parseClueType(s.clueTypes[j]);
+          const strategy = st === 'pre-revealed'
+            ? { kind: 'pre-revealed' as const }
+            : { kind: 'clue' as const, type: st as 'adjacent', special: ss };
+          blueprintSteps.push({
+            id: stepId++,
+            label: `Step ${i + 1} (clue ${j + 1})`,
+            target: { kind: 'auto' as const },
+            targetValue: (Math.random() < 0.5 ? 1 : 0) as 0 | 1,
+            requiredStrategy: strategy,
+          });
+        }
+      }
 
       const blueprint: PuzzleBlueprint = {
         id: `editor-${Date.now()}`,
@@ -191,35 +216,59 @@ export function BlueprintEditor({ onClose, pickedCell, onStepsChanged }: Bluepri
                 className="text-[10px] text-error hover:text-text-primary">✕</button>
             </div>
 
-            <div className="flex gap-2 text-[11px]">
+            {/* Target */}
+            <div className="flex gap-2 text-[11px] items-center">
               <select value={step.targetKind} onChange={(e) => updateStep(idx, { targetKind: e.target.value as 'auto' | 'coord' })}
                 className="bg-bg-secondary border border-grid-line rounded px-1 py-0.5 text-text-primary">
                 <option value="auto">Auto pick</option>
-                <option value="coord">Specific cell</option>
+                <option value="coord">Click to pick</option>
               </select>
 
-              {step.targetKind === 'coord' && (
-                <span className="text-text-secondary">
+              {step.targetKind === 'coord' ? (
+                <span className="text-text-secondary text-[10px]">
                   ({step.targetRow},{step.targetCol})
-                  <button type="button" onClick={() => setPickingForStep(idx)}
-                    className="ml-1 text-accent hover:text-accent-hover">📍</button>
                 </span>
-              )}
-            </div>
+              ) : null}
 
-            <div className="flex gap-2 text-[11px]">
+              <button type="button"
+                onClick={() => { updateStep(idx, { targetKind: 'coord' }); setPickingForStep(idx); }}
+                className={`text-[10px] px-1.5 py-0.5 rounded ${pickingForStep === idx ? 'bg-accent text-white' : 'bg-bg-secondary text-accent hover:text-accent-hover'}`}
+              >
+                {pickingForStep === idx ? '📍 clicking...' : '📍 pick cell'}
+              </button>
+
               <select value={step.targetValue} onChange={(e) => updateStep(idx, { targetValue: Number(e.target.value) as 0 | 1 })}
                 className="bg-bg-secondary border border-grid-line rounded px-1 py-0.5 text-text-primary">
-                <option value={1}>Mine 💣</option>
-                <option value={0}>Safe ✓</option>
+                <option value={1}>💣 Mine</option>
+                <option value={0}>✓ Safe</option>
               </select>
+            </div>
 
-              <select value={step.clueType} onChange={(e) => updateStep(idx, { clueType: e.target.value })}
-                className="bg-bg-secondary border border-grid-line rounded px-1 py-0.5 text-text-primary flex-1">
-                {CLUE_TYPES.map((ct) => (
-                  <option key={ct.value} value={ct.value}>{ct.label}</option>
-                ))}
-              </select>
+            {/* Clue types — checkboxes for multi-select */}
+            <div className="space-y-0.5">
+              <span className="text-[10px] text-text-tertiary">Required clues:</span>
+              <div className="flex flex-wrap gap-1">
+                {CLUE_TYPES.map((ct) => {
+                  const checked = step.clueTypes.includes(ct.value);
+                  return (
+                    <label key={ct.value}
+                      className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer border ${
+                        checked ? 'bg-accent/20 border-accent text-accent' : 'bg-bg-secondary border-grid-line text-text-tertiary hover:text-text-secondary'
+                      }`}>
+                      <input type="checkbox" className="hidden"
+                        checked={checked}
+                        onChange={() => {
+                          const types = checked
+                            ? step.clueTypes.filter((t) => t !== ct.value)
+                            : [...step.clueTypes, ct.value];
+                          updateStep(idx, { clueTypes: types.length > 0 ? types : ['adjacent'] });
+                        }}
+                      />
+                      {ct.label}
+                    </label>
+                  );
+                })}
+              </div>
             </div>
           </div>
         ))}

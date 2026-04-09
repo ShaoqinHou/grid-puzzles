@@ -475,6 +475,11 @@ export function HexGrid({ definition }: HexGridProps) {
           <span className="text-hex-flagged">⚑</span> {mineCount.remaining} / {mineCount.total}
         </span>
         <span>{Math.round(evaluation.progress * 100)}%</span>
+        {hoverCell && (
+          <span className="text-[10px] text-text-tertiary font-mono">
+            [{hoverCell}]
+          </span>
+        )}
         <button
           type="button"
           onClick={() => { setShowLegend((v) => !v); setShowConfig(false); }}
@@ -625,7 +630,7 @@ export function HexGrid({ definition }: HexGridProps) {
 
       {/* Right sidebar: Blueprint Editor */}
       {showEditor && (
-        <div className="w-80 flex-shrink-0 max-h-[80vh] overflow-y-auto">
+        <div className="w-96 flex-shrink-0 max-h-[80vh] overflow-y-auto">
           <BlueprintEditor
             onClose={() => setShowEditor(false)}
             pickedCell={editorPickedCell}

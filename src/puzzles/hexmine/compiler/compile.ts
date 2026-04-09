@@ -298,20 +298,44 @@ export function compilePuzzle(
   }
 
   // ── Phase 6: Build player grid ──
-  let cascadeStart: { row: number; col: number } | null = null;
-  if (solution[originR][originC] === 0) {
-    cascadeStart = { row: originR, col: originC };
-  } else {
-    for (let r = 0; r < height && !cascadeStart; r++) {
-      for (let c = 0; c < width && !cascadeStart; c++) {
-        if (solution[r][c] === 0) cascadeStart = { row: r, col: c };
+  // For compiled puzzles: reveal ONLY the cells needed for the solving path.
+  // No automatic cascade flooding — only the cascade origin neighborhood
+  // plus cells that are clue display positions.
+  const playerGrid: HexMineGrid = Array.from({ length: height }, () =>
+    Array.from<HexMineCell>({ length: width }).fill('hidden'),
+  );
+
+  // Reveal the origin neighborhood (minimal foothold)
+  const originNeighbors = getOffsetNeighbors(originR, originC, width, height);
+  for (const cell of [{ row: originR, col: originC }, ...originNeighbors]) {
+    if (typeof solution[cell.row][cell.col] === 'number') {
+      playerGrid[cell.row][cell.col] = solution[cell.row][cell.col];
+    }
+  }
+
+  // Reveal clue display cells (so player can see the clues)
+  for (const clue of accumulatedClues) {
+    if (clue.type === 'adjacent' || clue.type === 'range') {
+      const [r, c] = clue.displayKey.split(',').map(Number);
+      if (typeof solution[r]?.[c] === 'number') {
+        playerGrid[r][c] = solution[r][c];
+        // Also reveal immediate neighbors of clue cells (context)
+        for (const n of getOffsetNeighbors(r, c, width, height)) {
+          if (typeof solution[n.row][n.col] === 'number' && playerGrid[n.row][n.col] === 'hidden') {
+            playerGrid[n.row][n.col] = solution[n.row][n.col];
+          }
+        }
       }
     }
   }
 
-  const playerGrid: HexMineGrid = cascadeStart
-    ? simulateCascade(solution, cascadeStart, width, height)
-    : Array.from({ length: height }, () => Array.from<HexMineCell>({ length: width }).fill('hidden'));
+  // Reveal cells from pre-revealed steps
+  for (const key of revealedSet) {
+    const [r, c] = key.split(',').map(Number);
+    if (typeof solution[r]?.[c] === 'number' && playerGrid[r][c] === 'hidden') {
+      playerGrid[r][c] = solution[r][c];
+    }
+  }
 
   // Trim grid shape (create holes in unused areas)
   trimShape(solution, playerGrid, accumulatedClues, shape, width, height);
@@ -336,40 +360,59 @@ export function compilePuzzle(
     accumulatedClues.length > 0 ? accumulatedClues : undefined,
   );
 
-  // If not solvable, add supplementary adjacent clues on revealed frontier cells
+  // If not solvable, progressively reveal more cells and add clues
   if (!solvable) {
-    log.push('Not solvable — adding supplementary clues...');
-    for (let r = 0; r < height && !solvable; r++) {
-      for (let c = 0; c < width && !solvable; c++) {
-        if (typeof playerGrid[r][c] !== 'number' || playerGrid[r][c] === 0) continue;
-        // Check if this cell already has a clue
-        const ck = coordKey(r, c);
-        if (accumulatedClues.some((cl) => cl.displayKey === ck)) continue;
+    log.push('Not solvable — expanding reveals and adding clues...');
 
-        const cwNeighbors = getNeighborsClockwise(r, c, width, height);
-        if (cwNeighbors.some((n) => n === null)) continue;
+    // First: expand reveals to neighbors of currently revealed cells
+    for (let pass = 0; pass < 5 && !solvable; pass++) {
+      const toReveal: Array<{ row: number; col: number }> = [];
+      for (let r = 0; r < height; r++) {
+        for (let c = 0; c < width; c++) {
+          if (typeof playerGrid[r][c] !== 'number') continue;
+          for (const n of getOffsetNeighbors(r, c, width, height)) {
+            if (playerGrid[n.row][n.col] === 'hidden' && typeof solution[n.row][n.col] === 'number') {
+              toReveal.push(n);
+            }
+          }
+        }
+      }
+      for (const cell of toReveal) {
+        playerGrid[cell.row][cell.col] = solution[cell.row][cell.col];
+      }
 
-        const cellKeys = (cwNeighbors as Array<{ row: number; col: number }>)
-          .map((n) => coordKey(n.row, n.col));
-        const mc = cellKeys.reduce((cnt, key) => {
-          const [nr, nc] = key.split(',').map(Number);
-          return cnt + (solution[nr]?.[nc] === 'mine' ? 1 : 0);
-        }, 0);
+      // Add adjacent clues on newly revealed number cells
+      for (let r = 0; r < height && !solvable; r++) {
+        for (let c = 0; c < width && !solvable; c++) {
+          if (typeof playerGrid[r][c] !== 'number' || playerGrid[r][c] === 0) continue;
+          const ck = coordKey(r, c);
+          if (accumulatedClues.some((cl) => cl.displayKey === ck)) continue;
 
-        if (mc === 0) continue;
+          const cwNeighbors = getNeighborsClockwise(r, c, width, height);
+          if (cwNeighbors.some((n) => n === null)) continue;
 
-        accumulatedClues.push({
-          id: `supp-adj-${r},${c}`,
-          type: 'adjacent',
-          cellKeys,
-          mineCount: mc,
-          special: 'none',
-          displayKey: ck,
-        });
+          const cellKeys = (cwNeighbors as Array<{ row: number; col: number }>)
+            .map((n) => coordKey(n.row, n.col));
+          const mc = cellKeys.reduce((cnt, key) => {
+            const [nr, nc] = key.split(',').map(Number);
+            return cnt + (solution[nr]?.[nc] === 'mine' ? 1 : 0);
+          }, 0);
 
-        solvable = solveFromRevealed(
-          playerGrid, solution, width, height, accumulatedClues,
-        );
+          if (mc === 0) continue;
+
+          accumulatedClues.push({
+            id: `supp-adj-${r},${c}`,
+            type: 'adjacent',
+            cellKeys,
+            mineCount: mc,
+            special: 'none',
+            displayKey: ck,
+          });
+
+          solvable = solveFromRevealed(
+            playerGrid, solution, width, height, accumulatedClues,
+          );
+        }
       }
     }
     log.push(`After supplements: solvable=${solvable}, clues=${accumulatedClues.length}`);

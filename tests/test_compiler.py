@@ -125,7 +125,7 @@ def main():
         print("\n-- Test 4: Auto targets + range clues --")
         r = compile_and_check(page, '''{
             id: 'test4', name: 'Range Clues', width: 10, height: 10,
-            mineDensity: 0.15, seed: 456,
+            mineDensity: 0.12, seed: 457,
             steps: [
                 { id: 0, target: { kind: 'auto' }, targetValue: 1,
                   requiredStrategy: { kind: 'clue', type: 'range' } },
