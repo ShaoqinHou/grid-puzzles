@@ -170,32 +170,54 @@ export function HexCellRenderer({
   } else if (cell === 'disabled') {
     fill = 'var(--color-hex-disabled)';
     stroke = 'var(--color-hex-disabled-stroke)';
-    // Render line clue: number + direction arrow
+    // Render line clue: number + direction arrow along hex EDGE (not vertex)
     if (clueInfo) {
       const text = formatClueText(clueInfo.mineCount, clueInfo.special, clueInfo.type);
-      // Direction arrow: line from center outward
-      const dirRad = clueInfo.direction !== undefined
-        ? (clueInfo.direction * 60 - 30) * (Math.PI / 180) // match hex vertex angles
-        : 0;
-      const arrowLen = size * 0.7;
+      // Direction follows axial directions: 0=E, 1=NE, 2=NW, 3=W, 4=SW, 5=SE
+      // For pointy-top hex, flat edges are at 0°, 60°, 120°, etc.
+      // Axial direction angles: E=0°, NE=60°, NW=120°, W=180°, SW=240°, SE=300°
+      const dirAngles: Record<number, number> = { 0: 0, 1: 60, 2: 120, 3: 180, 4: 240, 5: 300 };
+      const angleDeg = clueInfo.direction !== undefined ? (dirAngles[clueInfo.direction] ?? 0) : 0;
+      const dirRad = (angleDeg - 90) * (Math.PI / 180); // -90 because SVG Y is inverted
+      const arrowLen = size * 0.9;
       const ax = cx + Math.cos(dirRad) * arrowLen;
       const ay = cy + Math.sin(dirRad) * arrowLen;
+      // Arrow head
+      const headLen = size * 0.25;
+      const headAngle1 = dirRad + 2.5;
+      const headAngle2 = dirRad - 2.5;
+      const hx1 = ax + Math.cos(headAngle1) * headLen;
+      const hy1 = ay + Math.sin(headAngle1) * headLen;
+      const hx2 = ax + Math.cos(headAngle2) * headLen;
+      const hy2 = ay + Math.sin(headAngle2) * headLen;
+      // Offset text away from the arrow
+      const textOffsetX = cx - Math.cos(dirRad) * size * 0.3;
+      const textOffsetY = cy - Math.sin(dirRad) * size * 0.3;
       content = (
         <>
+          {/* Direction arrow — solid, visible */}
           <line
-            x1={cx} y1={cy} x2={ax} y2={ay}
+            x1={cx + Math.cos(dirRad) * size * 0.2} y1={cy + Math.sin(dirRad) * size * 0.2}
+            x2={ax} y2={ay}
             stroke="var(--color-hex-clue-line)"
-            strokeWidth={1.5}
-            strokeDasharray="3,2"
-            opacity={0.6}
+            strokeWidth={2}
+            opacity={0.8}
             style={{ pointerEvents: 'none' }}
           />
+          {/* Arrowhead */}
+          <polygon
+            points={`${ax},${ay} ${hx1},${hy1} ${hx2},${hy2}`}
+            fill="var(--color-hex-clue-line)"
+            opacity={0.8}
+            style={{ pointerEvents: 'none' }}
+          />
+          {/* Number */}
           <text
-            x={cx}
-            y={cy}
+            x={textOffsetX}
+            y={textOffsetY}
             textAnchor="middle"
             dominantBaseline="central"
-            fontSize={fontSize * 0.7}
+            fontSize={fontSize * 0.65}
             fontWeight="bold"
             fontFamily="system-ui, -apple-system, sans-serif"
             fill="var(--color-hex-clue-line)"

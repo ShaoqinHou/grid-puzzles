@@ -164,7 +164,7 @@ export function HexGrid({ definition }: HexGridProps) {
     // Build scope lookup: displayKey → set of cellKeys (for hover highlighting)
     const scopeMap = new Map<string, ReadonlySet<string>>();
     for (const clue of clueData.clues) {
-      if (clue.type === 'range' || clue.type === 'line' || (clue.type === 'adjacent' && clue.special !== 'none')) {
+      if (clue.type === 'range' || clue.type === 'line' || clue.type === 'adjacent' || clue.type === 'edge-header') {
         scopeMap.set(clue.displayKey, new Set(clue.cellKeys));
       }
     }
@@ -577,10 +577,11 @@ export function HexGrid({ definition }: HexGridProps) {
             onContextMenu={(e) => handleContextMenu(c.row, c.col, e)}
             onMouseEnter={() => {
               setHoverCell(c.key);
-              // Only show scope highlight on revealed clue cells (not hidden — prevents info leak)
+              // Show scope on revealed cells AND disabled cells (line clue origins)
+              // but NOT hidden cells (prevents info leak)
               const cellVal = grid[c.row][c.col];
-              const isRevealed = typeof cellVal === 'number' || cellVal === 'disabled';
-              setHoveredScope(isRevealed ? (clueScopeMap.get(c.key) ?? null) : null);
+              const canShowScope = typeof cellVal === 'number' || cellVal === 'disabled';
+              setHoveredScope(canShowScope ? (clueScopeMap.get(c.key) ?? null) : null);
             }}
             onMouseLeave={() => {
               setHoverCell(null);
