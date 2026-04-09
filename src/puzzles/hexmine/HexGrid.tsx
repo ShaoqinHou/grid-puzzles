@@ -193,6 +193,7 @@ export function HexGrid({ definition }: HexGridProps) {
       questionMarkSet: new Set(clueData.questionMarks),
       edgeHeaders: headers,
       clueScopeMap: scopeMap,
+      persistentScopeMap,
     };
   }, [state.clues, hexSize]);
 

@@ -395,27 +395,28 @@ export function HexCellRenderer({
         </g>
       )}
       {!isRevealed && content}
-      {/* Persistent scope color indicators */}
-      {scopeIndicators && scopeColors!.map((color, i) => {
-        const angle = (-90 + i * (360 / Math.max(scopeColors!.length, 2))) * (Math.PI / 180);
-        const dotR = size * 0.65;
-        const dx = cx + Math.cos(angle) * dotR;
-        const dy = cy + Math.sin(angle) * dotR;
-        return (
-          <circle key={`scope-${i}`}
-            cx={dx} cy={dy} r={size * 0.12}
-            fill={color} opacity={0.8}
-            style={{ pointerEvents: 'none' }}
-          />
-        );
-      })}
-      {/* Cells in multiple scopes get a double-ring to show intersection */}
-      {scopeColors && scopeColors.length >= 2 && cell !== 'disabled' && (
+      {/* Persistent scope indicators — bright colored borders always visible */}
+      {scopeIndicators && scopeColors!.length === 1 && (
         <polygon points={points} fill="none"
-          stroke="var(--color-warning)" strokeWidth={2.5}
-          strokeDasharray="4,3" opacity={0.7}
+          stroke={scopeColors![0]} strokeWidth={3}
+          opacity={0.9}
           style={{ pointerEvents: 'none' }}
         />
+      )}
+      {/* Cells in 2+ scopes: BRIGHT yellow ring = intersection = the answer */}
+      {scopeIndicators && scopeColors!.length >= 2 && (
+        <>
+          <polygon points={points}
+            fill="rgba(251, 191, 36, 0.15)"
+            stroke="var(--color-warning)" strokeWidth={3.5}
+            opacity={1}
+            style={{ pointerEvents: 'none' }}
+          />
+          <text x={cx} y={cy - size * 0.5} textAnchor="middle" fontSize={size * 0.35}
+            fill="var(--color-warning)" opacity={0.8} style={{ pointerEvents: 'none' }}>
+            ★
+          </text>
+        </>
       )}
       {cell === 'exploded' && (
         <circle
