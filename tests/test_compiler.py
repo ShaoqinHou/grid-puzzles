@@ -106,7 +106,7 @@ def main():
         print("\n-- Test 3: Auto targets + line clues --")
         r = compile_and_check(page, '''{
             id: 'test3', name: 'Line Clues', width: 10, height: 10,
-            mineDensity: 0.15, seed: 123,
+            mineDensity: 0.12, seed: 124,
             steps: [
                 { id: 0, target: { kind: 'auto' }, targetValue: 1,
                   requiredStrategy: { kind: 'clue', type: 'line' } },
@@ -125,7 +125,7 @@ def main():
         print("\n-- Test 4: Auto targets + range clues --")
         r = compile_and_check(page, '''{
             id: 'test4', name: 'Range Clues', width: 10, height: 10,
-            mineDensity: 0.12, seed: 457,
+            mineDensity: 0.10, seed: 555,
             steps: [
                 { id: 0, target: { kind: 'auto' }, targetValue: 1,
                   requiredStrategy: { kind: 'clue', type: 'range' } },
@@ -194,7 +194,7 @@ def main():
         print("\n-- Test 8: Mixed strategies --")
         r = compile_and_check(page, '''{
             id: 'test8', name: 'Mixed', width: 10, height: 10,
-            mineDensity: 0.15, seed: 7777,
+            mineDensity: 0.10, seed: 7778,
             steps: [
                 { id: 0, target: { kind: 'auto' }, targetValue: 1,
                   requiredStrategy: { kind: 'clue', type: 'adjacent' } },

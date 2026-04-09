@@ -93,46 +93,27 @@ export function BlueprintEditor({ onClose, pickedCell, onStepsChanged }: Bluepri
     setCompiling(true);
 
     try {
-      // For multi-clue steps, create one PuzzleStep per clue type
-      // (the compiler processes them in sequence)
-      const blueprintSteps: PuzzleStep[] = [];
-      let stepId = 0;
-      for (let i = 0; i < steps.length; i++) {
-        const s = steps[i];
+      // Each editor step becomes ONE PuzzleStep with multiple strategies
+      const blueprintSteps: PuzzleStep[] = steps.map((s, i) => {
         const target = s.targetKind === 'coord'
           ? { kind: 'coord' as const, row: s.targetRow, col: s.targetCol }
           : { kind: 'auto' as const };
 
-        // First clue type gets the actual target + value
-        const primaryType = s.clueTypes[0] ?? 'adjacent';
-        const { type: pt, special: ps } = parseClueType(primaryType);
-        const primaryStrategy = pt === 'pre-revealed'
-          ? { kind: 'pre-revealed' as const }
-          : { kind: 'clue' as const, type: pt as 'adjacent', special: ps };
-
-        blueprintSteps.push({
-          id: stepId++,
-          label: `Step ${i + 1}`,
-          target,
-          targetValue: s.targetValue,
-          requiredStrategy: primaryStrategy,
+        // Convert clue type strings to strategies
+        const strategies = s.clueTypes.map((ct) => {
+          const { type, special } = parseClueType(ct);
+          if (type === 'pre-revealed') return { kind: 'pre-revealed' as const };
+          return { kind: 'clue' as const, type: type as 'adjacent', special };
         });
 
-        // Additional clue types become supplementary steps (auto target, same general area)
-        for (let j = 1; j < s.clueTypes.length; j++) {
-          const { type: st, special: ss } = parseClueType(s.clueTypes[j]);
-          const strategy = st === 'pre-revealed'
-            ? { kind: 'pre-revealed' as const }
-            : { kind: 'clue' as const, type: st as 'adjacent', special: ss };
-          blueprintSteps.push({
-            id: stepId++,
-            label: `Step ${i + 1} (clue ${j + 1})`,
-            target: { kind: 'auto' as const },
-            targetValue: (Math.random() < 0.5 ? 1 : 0) as 0 | 1,
-            requiredStrategy: strategy,
-          });
-        }
-      }
+        return {
+          id: i,
+          label: `Step ${i + 1} (${s.clueTypes.length} clue${s.clueTypes.length > 1 ? 's' : ''})`,
+          target,
+          targetValue: s.targetValue,
+          requiredStrategies: strategies,
+        };
+      });
 
       const blueprint: PuzzleBlueprint = {
         id: `editor-${Date.now()}`,

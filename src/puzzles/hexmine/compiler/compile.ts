@@ -45,7 +45,7 @@ function autoGenerateSteps(
       label: `Auto step ${i}`,
       target: { kind: 'auto' },
       targetValue: targetValue as 0 | 1,
-      requiredStrategy: strategy,
+      requiredStrategies: [strategy],
     });
   }
 
@@ -215,45 +215,46 @@ export function compilePuzzle(
       );
     }
 
-    // Create clue
-    const strategy = step.requiredStrategy ?? { kind: 'clue', type: 'adjacent' };
+    // Create ALL clues for this step (multi-clue = harder deduction)
+    const strategies = step.requiredStrategies ?? [{ kind: 'clue', type: 'adjacent' }];
+    const stepClues: typeof accumulatedClues = [];
+    let hasPreRevealed = false;
 
-    if (strategy.kind === 'clue') {
-      const clue = createClueForStrategy(
-        strategy, resolvedTarget, tempSolution, assignments, shape, width, height, rng,
-      );
-
-      if (!clue) {
-        // Try fallback to adjacent
-        const fallback = findAdjacentClue(
-          resolvedTarget, undefined, tempSolution, assignments, width, height, rng,
+    for (const strategy of strategies) {
+      if (strategy.kind === 'clue') {
+        const clue = createClueForStrategy(
+          strategy, resolvedTarget, tempSolution, assignments, shape, width, height, rng,
         );
-        if (fallback) {
-          accumulatedClues.push(fallback);
-          log.push(`Step ${step.id}: ${strategy.type} failed, used adjacent fallback`);
-        } else if (step.target.kind === 'auto') {
-          // Undo and skip
-          assignments.set(targetKey, 'unknown');
-          if (targetValue === 1) tempSolution[resolvedTarget.row][resolvedTarget.col] = 0;
-          log.push(`Step ${step.id}: no clue possible, skipping`);
-          continue;
+
+        if (clue) {
+          // Avoid duplicate clues at same displayKey
+          if (!accumulatedClues.some((c) => c.displayKey === clue.displayKey) &&
+              !stepClues.some((c) => c.displayKey === clue.displayKey)) {
+            stepClues.push(clue);
+            log.push(`Step ${step.id}: created ${clue.type} clue at ${clue.displayKey}`);
+          }
         } else {
-          throw new CompilationError(
-            `Step ${step.id}: cannot create ${strategy.type} clue for ${targetKey}`,
-            step.id, log,
+          log.push(`Step ${step.id}: ${strategy.type} clue failed`);
+          // Try adjacent fallback
+          const fallback = findAdjacentClue(
+            resolvedTarget, undefined, tempSolution, assignments, width, height, rng,
           );
+          if (fallback && !accumulatedClues.some((c) => c.displayKey === fallback.displayKey)) {
+            stepClues.push(fallback);
+            log.push(`Step ${step.id}: used adjacent fallback`);
+          }
         }
-      } else {
-        accumulatedClues.push(clue);
-        log.push(`Step ${step.id}: created ${clue.type} clue at ${clue.displayKey}`);
+      } else if (strategy.kind === 'pre-revealed') {
+        hasPreRevealed = true;
+        revealedSet.add(targetKey);
+        log.push(`Step ${step.id}: pre-revealed ${targetKey}`);
       }
-    } else if (strategy.kind === 'pre-revealed') {
-      revealedSet.add(targetKey);
-      log.push(`Step ${step.id}: pre-revealed ${targetKey}`);
     }
 
+    accumulatedClues.push(...stepClues);
+
     // Update revealed set
-    if (targetValue === 0) {
+    if (targetValue === 0 || hasPreRevealed) {
       revealedSet.add(targetKey);
     }
 
@@ -261,17 +262,16 @@ export function compilePuzzle(
     updateTempSolution(tempSolution, assignments, width, height);
     updateTempGrid(tempGrid, assignments, revealedSet, tempSolution, width, height);
 
-    // Emit solution step with explanation
-    const lastClue = accumulatedClues.length > 0 ? accumulatedClues[accumulatedClues.length - 1] : null;
-    const stepClue = (strategy.kind === 'clue' && lastClue) ? lastClue : null;
+    // Emit ONE solution step listing ALL clues for this step
+    const primaryClue = stepClues.length > 0 ? stepClues[0] : null;
     solutionSteps.push(explainStep(
       step.id,
       step.label ?? `Step ${step.id}`,
       resolvedTarget.row,
       resolvedTarget.col,
       targetValue as 0 | 1,
-      stepClue,
-      strategy.kind,
+      primaryClue,
+      strategies[0]?.kind ?? 'clue',
     ));
 
     stepsProcessed++;
@@ -305,28 +305,29 @@ export function compilePuzzle(
     Array.from<HexMineCell>({ length: width }).fill('hidden'),
   );
 
-  // Reveal the origin neighborhood (minimal foothold)
-  const originNeighbors = getOffsetNeighbors(originR, originC, width, height);
-  for (const cell of [{ row: originR, col: originC }, ...originNeighbors]) {
-    if (typeof solution[cell.row][cell.col] === 'number') {
-      playerGrid[cell.row][cell.col] = solution[cell.row][cell.col];
+  // Minimal pre-reveal: only what the player MUST see to start solving.
+  // The cascade origin itself — just enough context.
+  if (typeof solution[originR][originC] === 'number') {
+    playerGrid[originR][originC] = solution[originR][originC];
+  }
+  // Reveal just a few neighbors of the origin (not all — keep it minimal)
+  const originNbrs = getOffsetNeighbors(originR, originC, width, height);
+  for (let i = 0; i < Math.min(3, originNbrs.length); i++) {
+    const n = originNbrs[i];
+    if (typeof solution[n.row][n.col] === 'number') {
+      playerGrid[n.row][n.col] = solution[n.row][n.col];
     }
   }
 
-  // Reveal clue display cells (so player can see the clues)
+  // Reveal adjacent clue display cells (player needs to see the numbers)
   for (const clue of accumulatedClues) {
     if (clue.type === 'adjacent' || clue.type === 'range') {
       const [r, c] = clue.displayKey.split(',').map(Number);
       if (typeof solution[r]?.[c] === 'number') {
         playerGrid[r][c] = solution[r][c];
-        // Also reveal immediate neighbors of clue cells (context)
-        for (const n of getOffsetNeighbors(r, c, width, height)) {
-          if (typeof solution[n.row][n.col] === 'number' && playerGrid[n.row][n.col] === 'hidden') {
-            playerGrid[n.row][n.col] = solution[n.row][n.col];
-          }
-        }
       }
     }
+    // Edge headers and line clues are visible without revealing cells
   }
 
   // Reveal cells from pre-revealed steps
@@ -365,7 +366,7 @@ export function compilePuzzle(
     log.push('Not solvable — expanding reveals and adding clues...');
 
     // First: expand reveals to neighbors of currently revealed cells
-    for (let pass = 0; pass < 5 && !solvable; pass++) {
+    for (let pass = 0; pass < 10 && !solvable; pass++) {
       const toReveal: Array<{ row: number; col: number }> = [];
       for (let r = 0; r < height; r++) {
         for (let c = 0; c < width; c++) {

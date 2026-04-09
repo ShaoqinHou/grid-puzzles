@@ -21,10 +21,10 @@ export interface PuzzleStep {
   readonly target: CellTarget;
   /** What the target cell should be (0=safe, 1=mine). undefined = compiler picks */
   readonly targetValue?: 0 | 1;
-  /** Which clue mechanism proves this target. undefined = compiler picks */
-  readonly requiredStrategy?: StepStrategy;
-  /** How many clues must be combined (1=easy, 2=medium). undefined = 1 */
-  readonly deductionDepth?: number;
+  /** Which clue mechanisms prove this target — ALL are created for this step.
+   *  Multiple clues = player must combine all to deduce the target.
+   *  undefined = compiler picks one appropriate clue. */
+  readonly requiredStrategies?: readonly StepStrategy[];
 }
 
 /** Blueprint for compiling a puzzle */
