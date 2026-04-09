@@ -122,13 +122,14 @@ export function HexGrid({ definition }: HexGridProps) {
   }, [width, height, hexSize]);
 
   // Build clue lookup map + question mark set for rendering
-  const { clueMap, questionMarkSet, edgeHeaders, clueScopeMap } = useMemo(() => {
+  const { clueMap, questionMarkSet, edgeHeaders, clueScopeMap, persistentScopeMap } = useMemo(() => {
     const clueData = state.clues as HexMineClueData | null;
     if (!clueData) return {
       clueMap: new Map<string, ClueDisplayInfo>(),
       questionMarkSet: new Set<string>(),
       edgeHeaders: [] as Array<{ x: number; y: number; text: string }>,
       clueScopeMap: new Map<string, ReadonlySet<string>>(),
+      persistentScopeMap: new Map<string, string[]>(),
     };
     const map = new Map<string, ClueDisplayInfo>();
     const headers: Array<{ x: number; y: number; text: string }> = [];
@@ -166,6 +167,24 @@ export function HexGrid({ definition }: HexGridProps) {
     for (const clue of clueData.clues) {
       if (clue.type === 'range' || clue.type === 'line' || clue.type === 'adjacent' || clue.type === 'edge-header') {
         scopeMap.set(clue.displayKey, new Set(clue.cellKeys));
+      }
+    }
+
+    // Build persistent scope colors: cellKey → array of clue colors
+    // Each clue type gets a distinct color. Cells in multiple scopes show multiple colors.
+    const SCOPE_COLORS: Record<string, string> = {
+      line: 'var(--color-hex-clue-line)',
+      range: 'var(--color-hex-clue-range)',
+      adjacent: 'var(--color-hex-bracket-contiguous)',
+      'edge-header': 'var(--color-text-secondary)',
+    };
+    const persistentScopeMap = new Map<string, string[]>();
+    for (const clue of clueData.clues) {
+      const color = SCOPE_COLORS[clue.type] ?? 'var(--color-accent)';
+      for (const cellKey of clue.cellKeys) {
+        const existing = persistentScopeMap.get(cellKey) ?? [];
+        existing.push(color);
+        persistentScopeMap.set(cellKey, existing);
       }
     }
 
@@ -570,6 +589,7 @@ export function HexGrid({ definition }: HexGridProps) {
             }
             clueInfo={clueMap.get(c.key)}
             isQuestionMark={questionMarkSet.has(c.key)}
+            scopeColors={persistentScopeMap?.get(c.key)}
             isScopeHighlight={
               (hoveredScope !== null && hoveredScope.has(c.key)) ||
               (activePathStep !== null && activePathStep.scopeKeys.includes(c.key))

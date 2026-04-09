@@ -57,6 +57,7 @@ export interface HexCellProps {
   readonly isQuestionMark?: boolean;
   readonly isScopeHighlight?: boolean;
   readonly isPathTarget?: boolean;
+  readonly scopeColors?: string[];
   readonly onMouseDown: (e: React.MouseEvent) => void;
   readonly onContextMenu: (e: React.MouseEvent) => void;
   readonly onMouseEnter: () => void;
@@ -77,6 +78,7 @@ export function HexCellRenderer({
   isQuestionMark,
   isScopeHighlight,
   isPathTarget,
+  scopeColors,
   onMouseDown,
   onContextMenu,
   onMouseEnter,
@@ -341,6 +343,9 @@ export function HexCellRenderer({
     }
   }
 
+  // Persistent scope indicators: small colored dots showing which clue scopes include this cell
+  const scopeIndicators = scopeColors && scopeColors.length > 0 && cell !== 'disabled';
+
   if (isScopeHighlight) {
     stroke = 'var(--color-accent)';
     strokeWidth = 2;
@@ -390,6 +395,28 @@ export function HexCellRenderer({
         </g>
       )}
       {!isRevealed && content}
+      {/* Persistent scope color indicators */}
+      {scopeIndicators && scopeColors!.map((color, i) => {
+        const angle = (-90 + i * (360 / Math.max(scopeColors!.length, 2))) * (Math.PI / 180);
+        const dotR = size * 0.65;
+        const dx = cx + Math.cos(angle) * dotR;
+        const dy = cy + Math.sin(angle) * dotR;
+        return (
+          <circle key={`scope-${i}`}
+            cx={dx} cy={dy} r={size * 0.12}
+            fill={color} opacity={0.8}
+            style={{ pointerEvents: 'none' }}
+          />
+        );
+      })}
+      {/* Cells in multiple scopes get a double-ring to show intersection */}
+      {scopeColors && scopeColors.length >= 2 && cell !== 'disabled' && (
+        <polygon points={points} fill="none"
+          stroke="var(--color-warning)" strokeWidth={2.5}
+          strokeDasharray="4,3" opacity={0.7}
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
       {cell === 'exploded' && (
         <circle
           cx={cx}

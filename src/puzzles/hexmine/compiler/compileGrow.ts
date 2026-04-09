@@ -687,20 +687,9 @@ export function compilePuzzleGrow(
     }
   }
 
-  // Reveal cascade origin
-  if (typeof solution[originR][originC] === 'number') {
-    playerGrid[originR][originC] = solution[originR][originC];
-  }
-
-  // Reveal a few origin neighbors
-  for (let i = 0; i < Math.min(3, originNeighbors.length); i++) {
-    const n = originNeighbors[i];
-    if (typeof solution[n.row][n.col] === 'number') {
-      playerGrid[n.row][n.col] = solution[n.row][n.col];
-    }
-  }
-
-  // Reveal adjacent and range clue display cells
+  // For compiled puzzles: ONLY reveal clue display cells.
+  // No cascade origin reveals — those create trivial shortcuts.
+  // The clue displays are the ONLY information the player gets.
   for (const clue of accumulatedClues) {
     if (clue.type === 'adjacent' || clue.type === 'range') {
       const [r, c] = clue.displayKey.split(',').map(Number);
@@ -710,13 +699,10 @@ export function compilePuzzleGrow(
     }
   }
 
-  // Reveal pre-revealed cells
-  for (const key of revealedSet) {
-    const [r, c] = key.split(',').map(Number);
-    if (typeof solution[r]?.[c] === 'number' && playerGrid[r][c] === 'hidden') {
-      playerGrid[r][c] = solution[r][c];
-    }
-  }
+  // Only reveal cells from explicit pre-revealed STEPS (not cascade origin)
+  // The origin is used internally for placement but should NOT be shown to player
+  // unless a step explicitly pre-reveals it.
+  // (revealedSet includes origin, which we intentionally skip here)
 
   // Disabled cells in shape
   for (let r = 0; r < height; r++) {
