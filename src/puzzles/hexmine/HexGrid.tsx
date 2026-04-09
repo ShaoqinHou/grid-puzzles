@@ -20,6 +20,7 @@ import { HexMineLegend } from './HexMineLegend';
 import { HexMineConfigPanel } from './HexMineConfigPanel';
 import { LevelPackPanel } from './LevelPackPanel';
 import { SolutionPathPanel } from './SolutionPathPanel';
+import { BlueprintEditor } from './BlueprintEditor';
 import { saveProgress } from './levelPacks';
 import type { SolutionStep } from './compiler/explainer';
 
@@ -59,7 +60,10 @@ export function HexGrid({ definition }: HexGridProps) {
   const [showConfig, setShowConfig] = useState(false);
   const [showLevels, setShowLevels] = useState(false);
   const [showSolutionPath, setShowSolutionPath] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
   const [activePathStep, setActivePathStep] = useState<SolutionStep | null>(null);
+  const [editorPickedCell, setEditorPickedCell] = useState<{ row: number; col: number } | null>(null);
+  const [editorPickCallback, setEditorPickCallback] = useState<((r: number, c: number) => void) | null>(null);
   const [hoveredScope, setHoveredScope] = useState<ReadonlySet<string> | null>(null);
 
   const grid = state.grid as HexMineGrid;
@@ -497,11 +501,19 @@ export function HexGrid({ definition }: HexGridProps) {
         </button>
         <button
           type="button"
-          onClick={() => { setShowSolutionPath((v) => !v); setShowLegend(false); setShowConfig(false); setShowLevels(false); }}
+          onClick={() => { setShowSolutionPath((v) => !v); setShowEditor(false); setShowLegend(false); setShowConfig(false); setShowLevels(false); }}
           className="text-xs px-2 py-0.5 rounded bg-bg-tertiary hover:bg-accent-hover text-text-secondary hover:text-white transition-colors"
           title="Solution Path"
         >
           📋
+        </button>
+        <button
+          type="button"
+          onClick={() => { setShowEditor((v) => !v); setShowSolutionPath(false); setShowLegend(false); setShowConfig(false); setShowLevels(false); }}
+          className="text-xs px-2 py-0.5 rounded bg-bg-tertiary hover:bg-accent-hover text-text-secondary hover:text-white transition-colors"
+          title="Blueprint Editor"
+        >
+          ✏
         </button>
       </div>
 
@@ -521,14 +533,14 @@ export function HexGrid({ definition }: HexGridProps) {
       )}
 
       {/* Main area: grid + optional right sidebar */}
-      <div className={`flex ${showSolutionPath ? 'flex-row gap-4 items-start w-full max-w-5xl' : 'flex-col items-center'}`}>
+      <div className={`flex ${(showSolutionPath || showEditor) ? 'flex-row gap-4 items-start w-full max-w-5xl' : 'flex-col items-center'}`}>
 
       {/* SVG Hex Grid */}
-      <div className={showSolutionPath ? 'flex-1 min-w-0' : ''}>
+      <div className={(showSolutionPath || showEditor) ? 'flex-1 min-w-0' : ''}>
       <svg
         viewBox={`${layout.viewBox.x} ${layout.viewBox.y} ${layout.viewBox.width} ${layout.viewBox.height}`}
         width="100%"
-        style={{ maxWidth: showSolutionPath ? undefined : Math.min(600, layout.viewBox.width * 1.2), maxHeight: '70vh', touchAction: 'manipulation' }}
+        style={{ maxWidth: (showSolutionPath || showEditor) ? undefined : Math.min(600, layout.viewBox.width * 1.2), maxHeight: '70vh', touchAction: 'manipulation' }}
         preserveAspectRatio="xMidYMid meet"
       >
         {layout.cells.map((c) => (
@@ -607,6 +619,16 @@ export function HexGrid({ definition }: HexGridProps) {
           <SolutionPathPanel
             onClose={() => { setShowSolutionPath(false); setActivePathStep(null); }}
             onHighlightStep={(step) => setActivePathStep(step)}
+          />
+        </div>
+      )}
+
+      {/* Right sidebar: Blueprint Editor */}
+      {showEditor && (
+        <div className="w-80 flex-shrink-0 max-h-[80vh] overflow-y-auto">
+          <BlueprintEditor
+            onClose={() => setShowEditor(false)}
+            pickedCell={editorPickedCell}
           />
         </div>
       )}
