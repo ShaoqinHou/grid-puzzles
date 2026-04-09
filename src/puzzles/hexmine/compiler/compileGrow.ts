@@ -513,32 +513,85 @@ export function compilePuzzleGrow(
               !stepClues.some((c) => c.displayKey === clue.displayKey)) {
             stepClues.push(clue);
             log.push(`Step ${step.id}: created ${clue.type} clue at ${clue.displayKey}`);
-
-            // KEY GROW STEP: add all cells in the clue's scope to placedCells
-            for (const cellKey of clue.cellKeys) {
-              ensurePlaced(cellKey, assignments, placedCells);
-            }
           }
         } else {
           log.push(`Step ${step.id}: ${strategy.type} clue failed`);
-          // Try adjacent fallback
           const fallback = findAdjacentClue(
             resolvedTarget, undefined, tempSolution, assignments, width, height, rng,
           );
           if (fallback && !accumulatedClues.some((c) => c.displayKey === fallback.displayKey)) {
             stepClues.push(fallback);
             log.push(`Step ${step.id}: used adjacent fallback`);
-
-            // Grow: add fallback clue scope cells
-            for (const cellKey of fallback.cellKeys) {
-              ensurePlaced(cellKey, assignments, placedCells);
-            }
           }
         }
       } else if (strategy.kind === 'pre-revealed') {
         hasPreRevealed = true;
         revealedSet.add(targetKey);
         log.push(`Step ${step.id}: pre-revealed ${targetKey}`);
+      }
+    }
+
+    // SHAPE CARVING: for multi-clue steps, only keep scope cells that make
+    // the target uniquely deducible. The intersection of active cells across
+    // all clue scopes should narrow to ONLY the target.
+    if (stepClues.length >= 2) {
+      // Compute intersection of all clue scopes
+      const scopeSets = stepClues.map((c) => new Set(c.cellKeys));
+      const intersection = new Set(
+        [...scopeSets[0]].filter((k) => scopeSets.every((s) => s.has(k))),
+      );
+
+      // For each clue: keep the target + a few safe cells to make the count work.
+      // Disable other scope cells to narrow down possibilities.
+      for (const clue of stepClues) {
+        const keptCells: string[] = [targetKey]; // always keep target
+        const otherCells = clue.cellKeys.filter((k) => k !== targetKey);
+
+        // Keep just enough safe cells so mineCount = 1 (the target)
+        // and there are a few decoy cells for ambiguity management
+        const safeToKeep = Math.min(2, otherCells.length); // small number of extras
+        for (let i = 0; i < safeToKeep; i++) {
+          keptCells.push(otherCells[i]);
+          // Mark as safe (not mine)
+          assignments.set(otherCells[i], 'safe');
+        }
+
+        // Add kept cells to placed
+        for (const key of keptCells) {
+          ensurePlaced(key, assignments, placedCells);
+        }
+
+        // Update clue's cellKeys to only kept cells
+        (clue as unknown as { cellKeys: string[] }).cellKeys = keptCells;
+        // Update mineCount: only the target is a mine among kept cells
+        (clue as { mineCount: number }).mineCount = targetValue === 1 ? 1 : 0;
+      }
+
+      log.push(`Step ${step.id}: carved scopes to ${stepClues.map((c) => c.cellKeys.length)} cells each`);
+    } else if (stepClues.length === 1) {
+      // Single clue: keep minimal scope
+      const clue = stepClues[0];
+      const keptCells: string[] = [targetKey];
+      const otherCells = clue.cellKeys.filter((k) => k !== targetKey);
+      const safeToKeep = Math.min(3, otherCells.length);
+      for (let i = 0; i < safeToKeep; i++) {
+        keptCells.push(otherCells[i]);
+        assignments.set(otherCells[i], 'safe');
+      }
+      for (const key of keptCells) {
+        ensurePlaced(key, assignments, placedCells);
+      }
+      (clue as unknown as { cellKeys: string[] }).cellKeys = keptCells;
+      (clue as { mineCount: number }).mineCount = targetValue === 1 ? 1 : 0;
+      log.push(`Step ${step.id}: carved scope to ${keptCells.length} cells`);
+    }
+
+    // Also place the clue display cells
+    for (const clue of stepClues) {
+      ensurePlaced(clue.displayKey, assignments, placedCells);
+      // Ensure display cell is safe (not mine)
+      if (assignments.get(clue.displayKey) === 'unknown') {
+        assignments.set(clue.displayKey, 'safe');
       }
     }
 
@@ -595,6 +648,25 @@ export function compilePuzzleGrow(
         // clueFactory disabled this cell (line clue origin)
         solution[r][c] = 'disabled';
         shape[r][c] = false;
+      }
+    }
+  }
+
+  // Ensure range/adjacent clue display cells are NOT disabled
+  for (const clue of accumulatedClues) {
+    if (clue.type === 'range' || clue.type === 'adjacent') {
+      const [r, c] = clue.displayKey.split(',').map(Number);
+      if (r >= 0 && r < height && c >= 0 && c < width) {
+        shape[r][c] = true; // ensure active
+        if (solution[r][c] === 'disabled') {
+          // Recompute the number
+          const neighbors = getOffsetNeighbors(r, c, width, height);
+          let count = 0;
+          for (const n of neighbors) {
+            if (solution[n.row]?.[n.col] === 'mine') count++;
+          }
+          solution[r][c] = count as HexMineCell;
+        }
       }
     }
   }
