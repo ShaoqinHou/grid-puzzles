@@ -232,6 +232,35 @@ export function HexCellRenderer({
     }
   } else if (cell === 0) {
     fill = 'var(--color-hex-revealed-0)';
+    // Check if this 0-cell has a range or special clue to display
+    if (clueInfo?.type === 'range') {
+      const text = formatClueText(clueInfo.mineCount, 'none', 'range');
+      fill = 'var(--color-bg-tertiary)';
+      stroke = 'var(--color-hex-clue-range)';
+      strokeWidth = 2;
+      content = (
+        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
+          fontSize={fontSize * 0.8} fontWeight="bold"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          fill="var(--color-hex-clue-range)"
+          style={{ pointerEvents: 'none' }}>
+          {text}
+        </text>
+      );
+    } else if (clueInfo && clueInfo.special !== 'none') {
+      const text = formatClueText(0, clueInfo.special, clueInfo.type);
+      const color = getClueColor(clueInfo.type, clueInfo.special);
+      stroke = color;
+      strokeWidth = 2;
+      content = (
+        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
+          fontSize={fontSize * 0.8} fontWeight="bold"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          fill={color} style={{ pointerEvents: 'none' }}>
+          {text}
+        </text>
+      );
+    }
   } else {
     // Number 1-6
     fill = 'var(--color-hex-revealed)';
