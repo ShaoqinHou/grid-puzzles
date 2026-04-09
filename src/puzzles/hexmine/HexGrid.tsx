@@ -590,7 +590,7 @@ export function HexGrid({ definition }: HexGridProps) {
             }
             clueInfo={clueMap.get(c.key)}
             isQuestionMark={questionMarkSet.has(c.key)}
-            scopeColors={persistentScopeMap?.get(c.key)}
+            scopeColors={activePathStep ? persistentScopeMap?.get(c.key) : undefined}
             isScopeHighlight={
               (hoveredScope !== null && hoveredScope.has(c.key)) ||
               (activePathStep !== null && activePathStep.scopeKeys.includes(c.key))
