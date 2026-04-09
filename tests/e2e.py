@@ -1244,7 +1244,10 @@ def test_hexmine_advanced_clues(page: Page):
     # 1. Easy generates null clues (Phase 1 compatibility)
     start_easy_hexmine(page)
     state = get_state(page)
-    check("Easy — null clues", state.get('clues') is None)
+    # Easy may have solutionPath but no explicit clues
+    clue_data = state.get('clues')
+    has_explicit = isinstance(clue_data, dict) and len(clue_data.get('clues', [])) > 0
+    check("Easy — no explicit clues", clue_data is None or not has_explicit)
     check("Easy — no shape", state.get('shape') is None)
 
     # 2. Medium generates clues

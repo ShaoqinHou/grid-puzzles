@@ -5,7 +5,8 @@ import { getOffsetNeighbors, getNeighborsClockwise, getLineCells, getCellsInRang
 import { solveFromRevealed } from './solve';
 import { validatePuzzleIntegrity } from './validate';
 import { createSeededRandom } from './seededRandom';
-import { simulateCascade } from './solver';
+import { simulateCascade, solveWithRecording } from './solver';
+import { recordsToSolutionSteps } from './solver/recordToSteps';
 
 /** Current random function — replaced with seeded version during generation */
 let rng: () => number = Math.random;
@@ -609,10 +610,23 @@ export function generateHexMine(
     lastClues = prunedClues;
     lastShape = shape;
 
+    // Generate solution path for the player (run recorder)
+    const recorded = solveWithRecording(playerGrid, solution, width, height, prunedClues);
+    const solutionPath = recorded.records.length > 0
+      ? recordsToSolutionSteps(recorded.records, solution, prunedClues.length > 0 ? prunedClues : null, width, height)
+      : undefined;
+
+    // Attach solution path to clue data
+    const cluesWithPath: HexMineClues = hasClueData
+      ? { ...finalClues!, solutionPath }
+      : solutionPath
+        ? { clues: [], questionMarks: [], solutionPath }
+        : null;
+
     return {
       grid: playerGrid,
       solution,
-      clues: finalClues,
+      clues: cluesWithPath,
       emptyCell: 'hidden' as HexMineCell,
       width,
       height,
