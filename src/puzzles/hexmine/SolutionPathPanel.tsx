@@ -55,7 +55,7 @@ export function SolutionPathPanel({ onClose, onHighlightStep }: SolutionPathPane
   };
 
   return (
-    <div className="bg-bg-secondary rounded-lg border border-grid-line overflow-hidden max-w-sm max-h-[70vh] flex flex-col">
+    <div className="bg-bg-secondary rounded-lg border border-grid-line overflow-hidden flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 bg-bg-tertiary">
         <h3 className="text-sm font-bold text-text-primary">Solution Path</h3>
         <button type="button" onClick={onClose} className="text-text-tertiary hover:text-text-primary text-xs">✕</button>

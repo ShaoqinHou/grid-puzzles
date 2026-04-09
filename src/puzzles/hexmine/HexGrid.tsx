@@ -520,19 +520,15 @@ export function HexGrid({ definition }: HexGridProps) {
         <LevelPackPanel onClose={() => setShowLevels(false)} />
       )}
 
-      {/* Solution path panel */}
-      {showSolutionPath && (
-        <SolutionPathPanel
-          onClose={() => { setShowSolutionPath(false); setActivePathStep(null); }}
-          onHighlightStep={(step) => setActivePathStep(step)}
-        />
-      )}
+      {/* Main area: grid + optional right sidebar */}
+      <div className={`flex ${showSolutionPath ? 'flex-row gap-4 items-start w-full max-w-5xl' : 'flex-col items-center'}`}>
 
       {/* SVG Hex Grid */}
+      <div className={showSolutionPath ? 'flex-1 min-w-0' : ''}>
       <svg
         viewBox={`${layout.viewBox.x} ${layout.viewBox.y} ${layout.viewBox.width} ${layout.viewBox.height}`}
         width="100%"
-        style={{ maxWidth: Math.min(600, layout.viewBox.width * 1.2), maxHeight: '70vh', touchAction: 'manipulation' }}
+        style={{ maxWidth: showSolutionPath ? undefined : Math.min(600, layout.viewBox.width * 1.2), maxHeight: '70vh', touchAction: 'manipulation' }}
         preserveAspectRatio="xMidYMid meet"
       >
         {layout.cells.map((c) => (
@@ -602,6 +598,20 @@ export function HexGrid({ definition }: HexGridProps) {
           Game Over — Mine hit!
         </div>
       )}
+
+      </div>{/* end grid wrapper */}
+
+      {/* Right sidebar: Solution Path */}
+      {showSolutionPath && (
+        <div className="w-80 flex-shrink-0 max-h-[80vh] overflow-y-auto">
+          <SolutionPathPanel
+            onClose={() => { setShowSolutionPath(false); setActivePathStep(null); }}
+            onHighlightStep={(step) => setActivePathStep(step)}
+          />
+        </div>
+      )}
+
+      </div>{/* end flex-row/flex-col wrapper */}
     </div>
   );
 }
