@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useGameState } from '@/engine/GameStateProvider';
 import { usePanelManager } from '@/engine/PanelManager';
-import { compilePuzzle, type PuzzleStep, type PuzzleBlueprint, CompilationError } from './compiler';
+import { compilePuzzle, compilePuzzleGrow, compilePuzzleFog, type PuzzleStep, type PuzzleBlueprint, CompilationError } from './compiler';
 import type { ClueSpecial } from './types';
 
 const CLUE_TYPES = [
@@ -51,6 +51,7 @@ export function BlueprintEditor({ onClose, pickedCell, onStepsChanged }: Bluepri
   const [density, setDensity] = useState(0.15);
   const [seed, setSeed] = useState(Math.floor(Math.random() * 10000));
   const [steps, setSteps] = useState<StepDraft[]>([defaultStep()]);
+  const [approach, setApproach] = useState<'original' | 'grow' | 'fog'>('grow');
   const [error, setError] = useState<string | null>(null);
   const [compiling, setCompiling] = useState(false);
   const [pickingForStep, setPickingForStep] = useState<number | null>(null);
@@ -125,7 +126,10 @@ export function BlueprintEditor({ onClose, pickedCell, onStepsChanged }: Bluepri
         steps: blueprintSteps,
       };
 
-      const puzzle = compilePuzzle(blueprint);
+      const compileFunc = approach === 'grow' ? compilePuzzleGrow
+        : approach === 'fog' ? compilePuzzleFog
+        : compilePuzzle;
+      const puzzle = compileFunc(blueprint);
 
       dispatch({
         type: 'NEW_GAME',
@@ -183,6 +187,15 @@ export function BlueprintEditor({ onClose, pickedCell, onStepsChanged }: Bluepri
             Seed <input type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value))}
               className="w-16 bg-bg-primary border border-grid-line rounded px-1 py-0.5 text-text-primary text-center" />
           </label>
+        </div>
+        <div className="flex gap-2 text-xs items-center mt-1">
+          <span className="text-text-tertiary">Approach:</span>
+          <select value={approach} onChange={(e) => setApproach(e.target.value as 'original' | 'grow' | 'fog')}
+            className="bg-bg-primary border border-grid-line rounded px-1 py-0.5 text-text-primary flex-1">
+            <option value="grow">A: Grow (minimal cells)</option>
+            <option value="fog">B: Grow + Fog (minimal + noise ring)</option>
+            <option value="original">Original (full grid)</option>
+          </select>
         </div>
       </div>
 
