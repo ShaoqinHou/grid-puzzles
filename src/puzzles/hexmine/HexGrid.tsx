@@ -252,6 +252,12 @@ export function HexGrid({ definition }: HexGridProps) {
 
   const handleCellClick = useCallback(
     (row: number, col: number, e: React.MouseEvent) => {
+      // If editor is open and in picking mode, intercept click for cell selection
+      if (showEditor) {
+        setEditorPickedCell({ row, col });
+        return;
+      }
+
       if (state.solved || state.paused || gameLost) return;
 
       const cell = grid[row][col];
@@ -400,7 +406,7 @@ export function HexGrid({ definition }: HexGridProps) {
         }
       }
     },
-    [state.solved, state.paused, gameLost, grid, solution, width, height, dispatch, computeCascade, revealAllMines],
+    [state.solved, state.paused, gameLost, grid, solution, width, height, dispatch, computeCascade, revealAllMines, showEditor],
   );
 
   const handleContextMenu = useCallback(
@@ -514,7 +520,7 @@ export function HexGrid({ definition }: HexGridProps) {
         </button>
         <button
           type="button"
-          onClick={() => { setShowEditor((v) => !v); setShowSolutionPath(false); setShowLegend(false); setShowConfig(false); setShowLevels(false); }}
+          onClick={() => { setShowEditor((v) => !v); setEditorPickedCell(null); setShowSolutionPath(false); setShowLegend(false); setShowConfig(false); setShowLevels(false); }}
           className="text-xs px-2 py-0.5 rounded bg-bg-tertiary hover:bg-accent-hover text-text-secondary hover:text-white transition-colors"
           title="Blueprint Editor"
         >

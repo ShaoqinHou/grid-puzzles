@@ -263,14 +263,13 @@ export function compilePuzzle(
     updateTempGrid(tempGrid, assignments, revealedSet, tempSolution, width, height);
 
     // Emit ONE solution step listing ALL clues for this step
-    const primaryClue = stepClues.length > 0 ? stepClues[0] : null;
     solutionSteps.push(explainStep(
       step.id,
       step.label ?? `Step ${step.id}`,
       resolvedTarget.row,
       resolvedTarget.col,
       targetValue as 0 | 1,
-      primaryClue,
+      stepClues,
       strategies[0]?.kind ?? 'clue',
     ));
 

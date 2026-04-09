@@ -185,9 +185,11 @@ export function findRangeClue(
   for (let r = 0; r < height; r++) {
     for (let c = 0; c < width; c++) {
       if (solution[r][c] === 'mine' || solution[r][c] === 'disabled') continue;
-      if (assignments.get(coordKey(r, c)) !== 'safe') continue;
+      const cellState = assignments.get(coordKey(r, c));
+      if (cellState === 'mine') continue;
+      // Allow safe or unknown cells as range clue displays
       const nbrs = getOffsetNeighbors(r, c, width, height);
-      if (nbrs.length < 6) continue; // interior only
+      if (nbrs.length < 5) continue; // need most neighbors for meaningful range
 
       const rangeCells = getCellsInRange(r, c, 2, width, height);
       const coversTarget = rangeCells.some((rc) => rc.row === target.row && rc.col === target.col);

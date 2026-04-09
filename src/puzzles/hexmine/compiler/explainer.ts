@@ -23,7 +23,7 @@ export interface SolutionStep {
 
 /**
  * Generate a human-readable explanation for why a cell is mine or safe,
- * given the clue that proves it.
+ * given ALL clues that prove it.
  */
 export function explainStep(
   stepId: number,
@@ -31,7 +31,7 @@ export function explainStep(
   targetRow: number,
   targetCol: number,
   targetValue: 0 | 1,
-  clue: HexMineExplicitClue | null,
+  clues: HexMineExplicitClue[],
   strategyKind: string,
 ): SolutionStep {
   const cellName = `(${targetRow},${targetCol})`;
@@ -40,7 +40,10 @@ export function explainStep(
   let explanation: string;
   let summary: string;
 
-  if (!clue) {
+  // Merge all scope keys from all clues
+  const allScopeKeys = clues.flatMap((c) => [...c.cellKeys]);
+
+  if (clues.length === 0) {
     if (strategyKind === 'pre-revealed') {
       explanation = `Cell ${cellName} is pre-revealed as ${valueStr}. This gives you information without showing the number.`;
       summary = `${cellName} pre-revealed as ${valueStr}`;
@@ -48,16 +51,28 @@ export function explainStep(
       explanation = `Cell ${cellName} is ${valueStr}.`;
       summary = `${cellName} = ${valueStr}`;
     }
-  } else {
+  } else if (clues.length === 1) {
+    const clue = clues[0];
     const clueDesc = describeClue(clue);
-    const scopeSize = clue.cellKeys.length;
 
     if (targetValue === 1) {
-      explanation = `Cell ${cellName} must be a mine. ${clueDesc} This clue covers ${scopeSize} cells — given what you already know about the other cells, this one must be a mine to satisfy the count.`;
+      explanation = `Cell ${cellName} must be a mine. ${clueDesc}`;
       summary = `${cellName} is a mine (${clue.type} clue at ${clue.displayKey})`;
     } else {
-      explanation = `Cell ${cellName} must be safe. ${clueDesc} All mines required by this clue are already accounted for, so this cell cannot be a mine.`;
+      explanation = `Cell ${cellName} must be safe. ${clueDesc}`;
       summary = `${cellName} is safe (${clue.type} clue at ${clue.displayKey})`;
+    }
+  } else {
+    // Multiple clues — explain all of them
+    const clueDescs = clues.map((c) => describeClue(c)).join(' Also: ');
+    const clueTypes = clues.map((c) => c.type).join(' + ');
+
+    if (targetValue === 1) {
+      explanation = `Cell ${cellName} must be a mine. You need to combine ${clues.length} clues: ${clueDescs}`;
+      summary = `${cellName} is a mine (${clueTypes})`;
+    } else {
+      explanation = `Cell ${cellName} must be safe. You need to combine ${clues.length} clues: ${clueDescs}`;
+      summary = `${cellName} is safe (${clueTypes})`;
     }
   }
 
@@ -67,8 +82,8 @@ export function explainStep(
     targetRow,
     targetCol,
     targetValue: targetValue === 1 ? 'mine' : 'safe',
-    clue,
-    scopeKeys: clue?.cellKeys ?? [],
+    clue: clues[0] ?? null,
+    scopeKeys: allScopeKeys,
     explanation,
     summary,
   };

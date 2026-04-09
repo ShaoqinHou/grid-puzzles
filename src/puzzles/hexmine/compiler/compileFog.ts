@@ -353,15 +353,14 @@ export function compilePuzzleFog(
     recomputeNeighborCounts(tempSolution, assignments, width, height);
     updateTempGrid(tempGrid, assignments, revealedSet, tempSolution, width, height);
 
-    // Emit solution step
-    const primaryClue = stepClues.length > 0 ? stepClues[0] : null;
+    // Emit solution step with ALL clues
     solutionSteps.push(explainStep(
       step.id,
       step.label ?? `Step ${step.id}`,
       resolvedTarget.row,
       resolvedTarget.col,
       targetValue as 0 | 1,
-      primaryClue,
+      stepClues,
       strategies[0]?.kind ?? 'clue',
     ));
 
