@@ -531,59 +531,49 @@ export function compilePuzzleGrow(
       }
     }
 
-    // SHAPE CARVING: for multi-clue steps, only keep scope cells that make
-    // the target uniquely deducible. The intersection of active cells across
-    // all clue scopes should narrow to ONLY the target.
-    if (stepClues.length >= 2) {
-      // Compute intersection of all clue scopes
-      const scopeSets = stepClues.map((c) => new Set(c.cellKeys));
-      const intersection = new Set(
-        [...scopeSets[0]].filter((k) => scopeSets.every((s) => s.has(k))),
-      );
+    // SHAPE CARVING: keep only cells NEAR the target so the puzzle is
+    // spatially coherent and visually solvable.
+    // For multi-clue steps: each clue keeps target + 2 unique safe cells.
+    // One "shared" safe cell appears in both scopes as a decoy.
+    // The player's logic: clue A has {target, shared, uniqueA},
+    //   clue B has {target, shared, uniqueB}.
+    //   Both say "1 mine". shared is in both → still ambiguous.
+    //   But uniqueA is NOT in B and uniqueB is NOT in A.
+    //   So the ONLY cell in the intersection of "could be mine" = target.
+    {
+      // Sort each clue's scope cells by distance to target (nearest first)
+      const [tr, tc] = targetKey.split(',').map(Number);
+      const distToTarget = (key: string) => {
+        const [r, c] = key.split(',').map(Number);
+        return Math.abs(r - tr) + Math.abs(c - tc);
+      };
 
-      // For each clue: keep the target + a few safe cells to make the count work.
-      // Disable other scope cells to narrow down possibilities.
+      // Each clue gets: target + 2 UNIQUE cells (not shared with other clues).
+      // This ensures the target is the ONLY cell in all scopes' intersection.
+      const usedByOtherClues = new Set<string>();
+
       for (const clue of stepClues) {
-        const keptCells: string[] = [targetKey]; // always keep target
-        const otherCells = clue.cellKeys.filter((k) => k !== targetKey);
+        const otherCells = [...clue.cellKeys]
+          .filter((k) => k !== targetKey && !usedByOtherClues.has(k))
+          .sort((a, b) => distToTarget(a) - distToTarget(b));
 
-        // Keep just enough safe cells so mineCount = 1 (the target)
-        // and there are a few decoy cells for ambiguity management
-        const safeToKeep = Math.min(2, otherCells.length); // small number of extras
+        const keptCells: string[] = [targetKey];
+        const safeToKeep = Math.min(2, otherCells.length);
         for (let i = 0; i < safeToKeep; i++) {
           keptCells.push(otherCells[i]);
-          // Mark as safe (not mine)
           assignments.set(otherCells[i], 'safe');
+          usedByOtherClues.add(otherCells[i]); // prevent other clues from using this cell
         }
 
-        // Add kept cells to placed
         for (const key of keptCells) {
           ensurePlaced(key, assignments, placedCells);
         }
 
-        // Update clue's cellKeys to only kept cells
         (clue as unknown as { cellKeys: string[] }).cellKeys = keptCells;
-        // Update mineCount: only the target is a mine among kept cells
         (clue as { mineCount: number }).mineCount = targetValue === 1 ? 1 : 0;
       }
 
-      log.push(`Step ${step.id}: carved scopes to ${stepClues.map((c) => c.cellKeys.length)} cells each`);
-    } else if (stepClues.length === 1) {
-      // Single clue: keep minimal scope
-      const clue = stepClues[0];
-      const keptCells: string[] = [targetKey];
-      const otherCells = clue.cellKeys.filter((k) => k !== targetKey);
-      const safeToKeep = Math.min(3, otherCells.length);
-      for (let i = 0; i < safeToKeep; i++) {
-        keptCells.push(otherCells[i]);
-        assignments.set(otherCells[i], 'safe');
-      }
-      for (const key of keptCells) {
-        ensurePlaced(key, assignments, placedCells);
-      }
-      (clue as unknown as { cellKeys: string[] }).cellKeys = keptCells;
-      (clue as { mineCount: number }).mineCount = targetValue === 1 ? 1 : 0;
-      log.push(`Step ${step.id}: carved scope to ${keptCells.length} cells`);
+      log.push(`Step ${step.id}: carved scopes to ${stepClues.map((c) => c.cellKeys.length)} cells each (nearest to target)`);
     }
 
     // Also place the clue display cells
