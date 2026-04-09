@@ -170,15 +170,17 @@ export function HexCellRenderer({
   } else if (cell === 'disabled') {
     fill = 'var(--color-hex-disabled)';
     stroke = 'var(--color-hex-disabled-stroke)';
-    // Render line clue: number + direction arrow along hex EDGE (not vertex)
+    // Render line clue: number + direction arrow
     if (clueInfo) {
       const text = formatClueText(clueInfo.mineCount, clueInfo.special, clueInfo.type);
-      // Direction follows axial directions: 0=E, 1=NE, 2=NW, 3=W, 4=SW, 5=SE
-      // For pointy-top hex, flat edges are at 0°, 60°, 120°, etc.
-      // Axial direction angles: E=0°, NE=60°, NW=120°, W=180°, SW=240°, SE=300°
-      const dirAngles: Record<number, number> = { 0: 0, 1: 60, 2: 120, 3: 180, 4: 240, 5: 300 };
-      const angleDeg = clueInfo.direction !== undefined ? (dirAngles[clueInfo.direction] ?? 0) : 0;
-      const dirRad = (angleDeg - 90) * (Math.PI / 180); // -90 because SVG Y is inverted
+      // Compute pixel direction from axial direction vectors
+      // AXIAL_DIRECTIONS: 0=E(1,0), 1=NE(1,-1), 2=NW(0,-1), 3=W(-1,0), 4=SW(-1,1), 5=SE(0,1)
+      const axialDirs: Array<[number, number]> = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+      const [dq, dr] = clueInfo.direction !== undefined ? (axialDirs[clueInfo.direction] ?? [1, 0]) : [1, 0];
+      // Axial to pixel: dx = sqrt(3)*dq + sqrt(3)/2*dr, dy = 1.5*dr
+      const dx = Math.sqrt(3) * dq + (Math.sqrt(3) / 2) * dr;
+      const dy = 1.5 * dr;
+      const dirRad = Math.atan2(dy, dx);
       const arrowLen = size * 0.9;
       const ax = cx + Math.cos(dirRad) * arrowLen;
       const ay = cy + Math.sin(dirRad) * arrowLen;
@@ -248,17 +250,20 @@ export function HexCellRenderer({
           ?
         </text>
       );
-    // Check if this cell has a clue annotation (adjacent with special, or range)
+    // Special adjacent clues: {N} or -N- with distinct colored ring
     } else if (clueInfo && clueInfo.special !== 'none') {
       const text = formatClueText(numCell, clueInfo.special, clueInfo.type);
       const color = getClueColor(clueInfo.type, clueInfo.special, NUM_COLORS[numCell]);
+      // Colored inner ring to distinguish from plain numbers
+      stroke = color;
+      strokeWidth = 2;
       content = (
         <text
           x={cx}
           y={cy}
           textAnchor="middle"
           dominantBaseline="central"
-          fontSize={fontSize * 0.65}
+          fontSize={fontSize * 0.8}
           fontWeight="bold"
           fontFamily="system-ui, -apple-system, sans-serif"
           fill={color}
@@ -267,15 +272,19 @@ export function HexCellRenderer({
           {text}
         </text>
       );
+    // Range clue: (N) with cyan ring and distinct background
     } else if (clueInfo?.type === 'range') {
       const text = formatClueText(clueInfo.mineCount, 'none', 'range');
+      fill = 'var(--color-bg-tertiary)'; // slightly different background
+      stroke = 'var(--color-hex-clue-range)';
+      strokeWidth = 2;
       content = (
         <text
           x={cx}
           y={cy}
           textAnchor="middle"
           dominantBaseline="central"
-          fontSize={fontSize * 0.65}
+          fontSize={fontSize * 0.8}
           fontWeight="bold"
           fontFamily="system-ui, -apple-system, sans-serif"
           fill="var(--color-hex-clue-range)"
